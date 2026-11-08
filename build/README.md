@@ -115,11 +115,28 @@ Both native build scripts verify the source checkout's exact manifest commit
 and reject tracked changes, untracked files, and ignored files before applying
 patches. Go builds use `-trimpath`, disable VCS stamping, and clear the Go
 build ID so independent build directories do not affect the unsigned payload
-digest. The nerdbox shim
-is then ad-hoc signed for local macOS execution; that signature is not a
-release signature or provenance statement. The runtime adapter must consume
-these artifacts from explicit paths; it must not download `@latest`
-components during a reproducible build.
+digest. On macOS/arm64, the nerdbox shim is ad-hoc signed for local execution;
+that signature is not a release signature or provenance statement. On
+Linux/arm64, `scripts/build-nerdbox-shim.sh` requires an explicit
+`LIBKRUN_PREFIX` and links against its `libkrun` headers/library without macOS
+codesigning. The loader must also find the matching `libkrun` and `libkrunfw`
+shared libraries at runtime. The runtime adapter must consume these artifacts
+from explicit paths; it must not download `@latest` components during a
+reproducible build.
+
+The Linux shim build path is not yet a release recipe: `manifest.yaml` must
+record a source identity for libkrun (currently version-only) and an exact
+libkrunfw pin before the build can be called reproducible. The nerdbox v0.2.5
+Docker recipe builds libkrun v1.19.0 and mutates its `imago` Cargo dependency,
+so it does not validate this manifest's libkrun v1.19.6 selection.
+
+The project shim recipe also applies a small compatibility patch that treats
+`krun_get_shutdown_eventfd` as optional outside macOS. libkrun v1.19.6 only
+exports that symbol on macOS/aarch64, while the pinned nerdbox loader otherwise
+requires every declared symbol during Linux library loading. Linux never calls
+this function in the pinned source. Keep the patch and its manifest digest in
+sync, and retain a Linux runtime regression proving the library loads and a
+KVM task can boot.
 
 The Windows branch follows Docker's documented platform contract (Windows 11
 x64 with Windows Hypervisor Platform), while using QEMU WHPX as the open VMM.

@@ -29,6 +29,10 @@ patches:
     file: patches/nerdbox-proxy-channel.patch
     sha256: c6324f4b0ff03c919740db024d5527a70c0eec3b98926484838c672271379f13
     status: experimental
+  nerdbox-linux-shutdown-symbol:
+    file: patches/nerdbox-linux-shutdown-symbol.patch
+    sha256: 787a9680616d1e1eedcc97899c87d3776ba97e89c63ca7f00ead4026069d70eb
+    status: experimental
   gvproxy-egress-policy:
     file: patches/gvproxy-egress-policy-v2.patch
     sha256: 2e1ffe65819230451b0c0ad89adbe1f33ec1d8d96606d91cc111f6d2120e0b48

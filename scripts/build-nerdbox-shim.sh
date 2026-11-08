@@ -7,6 +7,27 @@ set -eu
 : "${NERDBOX_SRC:?set NERDBOX_SRC to an unpacked nerdbox v0.2.5 tree}"
 : "${OUT:?set OUT to the shim output path}"
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+HOST_OS=$(uname -s)
+case "$HOST_OS" in
+  Darwin)
+    LIBKRUN_PREFIX=${LIBKRUN_PREFIX:-/opt/homebrew/opt/libkrun}
+    LIBKRUN_LIBDIR=${LIBKRUN_LIBDIR:-$LIBKRUN_PREFIX/lib}
+    ;;
+  Linux)
+    : "${LIBKRUN_PREFIX:?set LIBKRUN_PREFIX to the prefix containing the pinned Linux libkrun build}"
+    if [ -z "${LIBKRUN_LIBDIR:-}" ]; then
+      if [ -d "$LIBKRUN_PREFIX/lib64" ]; then
+        LIBKRUN_LIBDIR=$LIBKRUN_PREFIX/lib64
+      else
+        LIBKRUN_LIBDIR=$LIBKRUN_PREFIX/lib
+      fi
+    fi
+    ;;
+  *)
+    echo "unsupported shim build host: $HOST_OS" >&2
+    exit 1
+    ;;
+esac
 "$ROOT/scripts/verify-pinned-source.sh" "$NERDBOX_SRC" 28c86e8e16c62a08079531ebe99e24a7bdad3d62
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/rheic-nerdbox-build.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT INT TERM
@@ -16,14 +37,21 @@ chmod -R u+w "$WORK/src"
 cd "$WORK/src"
 git apply "$ROOT/build/patches/nerdbox-gpt-threshold.patch"
 git apply "$ROOT/build/patches/nerdbox-proxy-channel.patch"
+git apply "$ROOT/build/patches/nerdbox-linux-shutdown-symbol.patch"
 CGO_ENABLED=1 \
-CGO_CFLAGS="-I${LIBKRUN_PREFIX:-/opt/homebrew/opt/libkrun}/include" \
-CGO_LDFLAGS="-L${LIBKRUN_PREFIX:-/opt/homebrew/opt/libkrun}/lib -lkrun" \
+CGO_CFLAGS="-I$LIBKRUN_PREFIX/include" \
+CGO_LDFLAGS="-L$LIBKRUN_LIBDIR -lkrun" \
 GOWORK=off go build -trimpath -buildvcs=false -ldflags=-buildid= -o "$WORK/shim" ./cmd/containerd-shim-nerdbox-v1
-codesign --force --sign - \
-  --entitlements cmd/containerd-shim-nerdbox-v1/containerd-shim-nerdbox-v1.entitlements \
-  "$WORK/shim"
+if [ "$HOST_OS" = Darwin ]; then
+  codesign --force --sign - \
+    --entitlements cmd/containerd-shim-nerdbox-v1/containerd-shim-nerdbox-v1.entitlements \
+    "$WORK/shim"
+fi
 mkdir -p "$(dirname -- "$OUT")"
 cp "$WORK/shim" "$OUT"
 chmod 0755 "$OUT"
-shasum -a 256 "$OUT"
+if [ "$HOST_OS" = Darwin ]; then
+  shasum -a 256 "$OUT"
+else
+  sha256sum "$OUT"
+fi
