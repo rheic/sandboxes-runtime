@@ -1,6 +1,8 @@
 package manifest
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -181,6 +183,96 @@ func TestVerifyComponentsRejectsMalformedSHA256(t *testing.T) {
 	}}
 	if err := m.verifyComponents(); err == nil {
 		t.Fatal("expected malformed component SHA-256 error")
+	}
+}
+
+func TestVerifyLinuxLibkrunPrefixRejectsArtifactAndMetadataDrift(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux prefix verifier requires sha256sum")
+	}
+	root := filepath.Join("..", "..")
+	prefix := t.TempDir()
+	libkrun := filepath.Join(prefix, "lib64", "libkrun.so.1.19.6")
+	libkrunfw := filepath.Join(prefix, "lib", "aarch64-linux-gnu", "libkrunfw.so.5.6.2")
+	libkrunBytes := []byte("synthetic libkrun artifact")
+	libkrunfwBytes := []byte("synthetic libkrunfw artifact")
+	for path, data := range map[string][]byte{libkrun: libkrunBytes, libkrunfw: libkrunfwBytes} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	digest := func(data []byte) string {
+		sum := sha256.Sum256(data)
+		return hex.EncodeToString(sum[:])
+	}
+	info := strings.Join([]string{
+		"libkrun_version=1.19.6",
+		"libkrun_commit=227b2de6ed323fe180e02f871c5f325a90c13cc2",
+		"libkrun_sha256=" + digest(libkrunBytes),
+		"libkrunfw_version=5.6.2",
+		"libkrunfw_commit=f14ac64ca8a04c6c9d76cac1c61ee050809c88c9",
+		"libkrunfw_sha256=" + digest(libkrunfwBytes),
+		"kernel_version=linux-6.12.109",
+		"kernel_sha256=5484e552a334e15019f4aeba89e5b58f04651cf2f4e24e04de9f152f1c38e3fa",
+		"rustc_version=1.90.0",
+		"gcc_version=13.3.0",
+	}, "\n") + "\n"
+	infoPath := filepath.Join(prefix, "share", "rheic-runtime", "libkrun-linux-arm64-build-info")
+	if err := os.MkdirAll(filepath.Dir(infoPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(infoPath, []byte(info), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	verify := func() error {
+		t.Helper()
+		cmd := exec.Command("sh", filepath.Join(root, "scripts", "verify-libkrun-linux-prefix.sh"), prefix)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("prefix verifier failed: %w: %s", err, output)
+		}
+		return nil
+	}
+	if err := verify(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(libkrun, []byte("replaced artifact"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := verify(); err == nil {
+		t.Fatal("prefix verifier accepted a replaced library")
+	}
+	if err := os.WriteFile(libkrun, libkrunBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(infoPath, []byte(info+"libkrun_version=1.19.7\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := verify(); err == nil {
+		t.Fatal("prefix verifier accepted a duplicate pinned metadata field")
+	}
+}
+
+func TestBuildLinuxLibkrunRejectsNonEmptyPrefix(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux build script uses find -mindepth")
+	}
+	root := filepath.Join("..", "..")
+	prefix := t.TempDir()
+	marker := filepath.Join(prefix, "keep.txt")
+	if err := os.WriteFile(marker, []byte("preserve"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", filepath.Join(root, "scripts", "build-libkrun-linux.sh"))
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "LIBKRUN_PREFIX=" + prefix}
+	output, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "LIBKRUN_PREFIX must be empty") {
+		t.Fatalf("expected non-empty prefix refusal, got err=%v output=%s", err, output)
+	}
+	if got, err := os.ReadFile(marker); err != nil || string(got) != "preserve" {
+		t.Fatalf("existing prefix content changed: got %q, err=%v", got, err)
 	}
 }
 
