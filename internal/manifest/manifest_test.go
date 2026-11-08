@@ -122,6 +122,68 @@ func TestNativeBuildScriptsUseManifestCommits(t *testing.T) {
 	}
 }
 
+func TestLinuxLibkrunBuildPinsManifestInputs(t *testing.T) {
+	root := filepath.Join("..", "..")
+	manifest, err := Load(filepath.Join(root, "build", "manifest.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "scripts", "build-libkrun-linux.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scriptText := string(data)
+	for _, component := range []string{"libkrun", "libkrunfw"} {
+		dep := manifest.Components[component]
+		pin := dep.Commit
+		if pin == "" || !strings.Contains(scriptText, pin) {
+			t.Errorf("Linux build script does not pin %s commit %q", component, pin)
+		}
+		if dep.Version == "" || !strings.Contains(scriptText, dep.Version) {
+			t.Errorf("Linux build script does not pin %s version %q", component, dep.Version)
+		}
+		if dep.Source == "" || !strings.Contains(scriptText, dep.Source) {
+			t.Errorf("Linux build script does not use %s source %q", component, dep.Source)
+		}
+	}
+	kernel := manifest.Components["linux-kernel-arm64"]
+	if kernel.SHA256 == "" || !strings.Contains(scriptText, kernel.SHA256) {
+		t.Errorf("Linux build script does not verify kernel source digest %q", kernel.SHA256)
+	}
+	kernelSourceInScript := strings.Replace(kernel.Source, "linux-"+kernel.Version, "$KERNEL_VERSION", 1)
+	if !strings.Contains(scriptText, kernel.Version) || !strings.Contains(scriptText, kernelSourceInScript) {
+		t.Errorf("Linux build script does not use manifest kernel version/source %q / %q", kernel.Version, kernel.Source)
+	}
+	for _, flag := range []string{"BLK=1", "NET=1", "ARCH=arm64", "LIBKRUN_PREFIX must be empty"} {
+		if !strings.Contains(scriptText, flag) {
+			t.Errorf("Linux build script is missing required build constraint %q", flag)
+		}
+	}
+	verifier, err := os.ReadFile(filepath.Join(root, "scripts", "verify-libkrun-linux-prefix.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, commit := range []string{manifest.Components["libkrun"].Commit, manifest.Components["libkrunfw"].Commit} {
+		if !strings.Contains(string(verifier), commit) {
+			t.Errorf("prefix verifier does not check source commit %q", commit)
+		}
+	}
+}
+
+func TestVerifyComponentsRejectsMalformedSHA256(t *testing.T) {
+	m := Manifest{Components: map[string]Component{
+		"containerd":         {Version: "1", Source: "x"},
+		"nerdbox":            {Version: "1", Source: "x"},
+		"libkrun":            {Version: "1", Source: "x"},
+		"libkrunfw":          {Version: "1", Source: "x"},
+		"linux-kernel-arm64": {Version: "1", Source: "x", SHA256: "not-a-digest"},
+		"gvisor-tap-vsock":   {Version: "1", Source: "x"},
+	}}
+	if err := m.verifyComponents(); err == nil {
+		t.Fatal("expected malformed component SHA-256 error")
+	}
+}
+
 func TestPinnedSourceRejectsIgnoredFiles(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("native source preflight is a POSIX shell script")
@@ -311,10 +373,12 @@ func TestVerifyRejectsMissingPatch(t *testing.T) {
 	m := Manifest{
 		Version: 1,
 		Components: map[string]Component{
-			"containerd":       {Version: "1", Source: "x"},
-			"nerdbox":          {Version: "1", Source: "x"},
-			"libkrun":          {Version: "1", Source: "x"},
-			"gvisor-tap-vsock": {Version: "1", Source: "x"},
+			"containerd":         {Version: "1", Source: "x"},
+			"nerdbox":            {Version: "1", Source: "x"},
+			"libkrun":            {Version: "1", Source: "x"},
+			"libkrunfw":          {Version: "1", Source: "x"},
+			"linux-kernel-arm64": {Version: "1", Source: "x"},
+			"gvisor-tap-vsock":   {Version: "1", Source: "x"},
 		},
 		Patches: map[string]Patch{
 			"missing": {File: "missing.patch", SHA256: "00"},
@@ -334,10 +398,12 @@ func TestVerifyRejectsUnpinnedImage(t *testing.T) {
 	m := Manifest{
 		Version: 1,
 		Components: map[string]Component{
-			"containerd":       {Version: "1", Source: "x"},
-			"nerdbox":          {Version: "1", Source: "x"},
-			"libkrun":          {Version: "1", Source: "x"},
-			"gvisor-tap-vsock": {Version: "1", Source: "x"},
+			"containerd":         {Version: "1", Source: "x"},
+			"nerdbox":            {Version: "1", Source: "x"},
+			"libkrun":            {Version: "1", Source: "x"},
+			"libkrunfw":          {Version: "1", Source: "x"},
+			"linux-kernel-arm64": {Version: "1", Source: "x"},
+			"gvisor-tap-vsock":   {Version: "1", Source: "x"},
 		},
 		Patches: map[string]Patch{
 			"p": {File: "p.patch", SHA256: "2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df"},

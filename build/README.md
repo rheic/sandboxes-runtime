@@ -11,7 +11,9 @@ adapter. The manifest is authoritative; the patches are checked by the
 
 - containerd `2.4.2`
 - nerdbox `0.2.5`, commit `28c86e8e16c62a08079531ebe99e24a7bdad3d62`
-- libkrun `1.19.6`
+- libkrun `1.19.6`, commit `227b2de6ed323fe180e02f871c5f325a90c13cc2`
+- libkrunfw `5.6.2`, commit `f14ac64ca8a04c6c9d76cac1c61ee050809c88c9`
+- Linux ARM64 kernel source `6.12.109`, SHA-256 in `manifest.yaml`
 - gvisor-tap-vsock commit `0b0819c174331f5b86d96db3ab7aad7dd126078e`
 - QEMU `11.1.3` for the experimental Windows WHPX backend, source SHA-512 in
   `manifest.yaml`
@@ -124,11 +126,25 @@ shared libraries at runtime. The runtime adapter must consume these artifacts
 from explicit paths; it must not download `@latest` components during a
 reproducible build.
 
-The Linux shim build path is not yet a release recipe: `manifest.yaml` must
-record a source identity for libkrun (currently version-only) and an exact
-libkrunfw pin before the build can be called reproducible. The nerdbox v0.2.5
-Docker recipe builds libkrun v1.19.0 and mutates its `imago` Cargo dependency,
-so it does not validate this manifest's libkrun v1.19.6 selection.
+The Linux source build recipe is `scripts/build-libkrun-linux.sh`. It checks
+the manifest-pinned libkrun/libkrunfw commits, the Linux kernel archive digest,
+Rust `1.90.0`, and GCC `13.3.0`, then writes the built library hashes into the
+prefix. Set `LIBKRUN_PREFIX` to an empty absolute directory; the script refuses
+to overwrite a non-empty prefix. Source checkouts are always cloned into
+temporary build trees and removed after the build.
+`scripts/verify-libkrun-linux-prefix.sh` detects
+post-build file drift against that prefix metadata. Since the metadata is
+stored beside the libraries and is not signed, this check is not an
+independent provenance or adversarial tamper guarantee.
+
+This recipe pins source identities but does not yet claim bit-for-bit
+reproducibility: the complete build image, compiler/linker and system package
+set are not digest-pinned, and the produced library hashes are not compared to
+an independently published expected digest. Tagged release builds still need
+CI provenance/signing and verification of the exact shared library loaded at
+runtime. The nerdbox v0.2.5 Docker recipe builds libkrun v1.19.0 and mutates
+its `imago` Cargo dependency, so it does not validate this manifest's libkrun
+v1.19.6 selection.
 
 The project shim recipe also applies a small compatibility patch that treats
 `krun_get_shutdown_eventfd` as optional outside macOS. libkrun v1.19.6 only

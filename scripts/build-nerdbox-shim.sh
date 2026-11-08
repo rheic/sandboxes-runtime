@@ -15,13 +15,13 @@ case "$HOST_OS" in
     ;;
   Linux)
     : "${LIBKRUN_PREFIX:?set LIBKRUN_PREFIX to the prefix containing the pinned Linux libkrun build}"
-    if [ -z "${LIBKRUN_LIBDIR:-}" ]; then
-      if [ -d "$LIBKRUN_PREFIX/lib64" ]; then
-        LIBKRUN_LIBDIR=$LIBKRUN_PREFIX/lib64
-      else
-        LIBKRUN_LIBDIR=$LIBKRUN_PREFIX/lib
-      fi
+    EXPECTED_LIBKRUN_LIBDIR=$LIBKRUN_PREFIX/lib64
+    if [ -n "${LIBKRUN_LIBDIR:-}" ] && [ "$LIBKRUN_LIBDIR" != "$EXPECTED_LIBKRUN_LIBDIR" ]; then
+      echo "Linux LIBKRUN_LIBDIR must be $EXPECTED_LIBKRUN_LIBDIR" >&2
+      exit 1
     fi
+    LIBKRUN_LIBDIR=$EXPECTED_LIBKRUN_LIBDIR
+    "$ROOT/scripts/verify-libkrun-linux-prefix.sh" "$LIBKRUN_PREFIX"
     ;;
   *)
     echo "unsupported shim build host: $HOST_OS" >&2

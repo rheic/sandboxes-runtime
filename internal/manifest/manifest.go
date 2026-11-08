@@ -27,6 +27,7 @@ type Component struct {
 	Version string `yaml:"version,omitempty"`
 	Commit  string `yaml:"commit,omitempty"`
 	Source  string `yaml:"source"`
+	SHA256  string `yaml:"sha256,omitempty"`
 	SHA512  string `yaml:"sha512,omitempty"`
 }
 
@@ -75,13 +76,21 @@ func (m Manifest) Verify(root string) error {
 }
 
 func (m Manifest) verifyComponents() error {
-	for _, name := range []string{"containerd", "nerdbox", "libkrun", "gvisor-tap-vsock"} {
+	for _, name := range []string{"containerd", "nerdbox", "libkrun", "libkrunfw", "linux-kernel-arm64", "gvisor-tap-vsock"} {
 		c, ok := m.Components[name]
 		if !ok || c.Source == "" || (c.Version == "" && c.Commit == "") {
 			return fmt.Errorf("component %s is not pinned", name)
 		}
 	}
 	for name, component := range m.Components {
+		if component.SHA256 != "" {
+			if len(component.SHA256) != 64 {
+				return fmt.Errorf("component %s has invalid SHA-256 pin", name)
+			}
+			if _, err := hex.DecodeString(component.SHA256); err != nil {
+				return fmt.Errorf("component %s has invalid SHA-256 pin: %w", name, err)
+			}
+		}
 		if component.SHA512 == "" {
 			continue
 		}

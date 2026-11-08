@@ -12,7 +12,16 @@ components:
     source: https://github.com/containerd/nerdbox
   libkrun:
     version: "1.19.6"
+    commit: 227b2de6ed323fe180e02f871c5f325a90c13cc2
     source: https://github.com/containers/libkrun
+  libkrunfw:
+    version: "5.6.2"
+    commit: f14ac64ca8a04c6c9d76cac1c61ee050809c88c9
+    source: https://github.com/containers/libkrunfw
+  linux-kernel-arm64:
+    version: "6.12.109"
+    source: https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.109.tar.xz
+    sha256: 5484e552a334e15019f4aeba89e5b58f04651cf2f4e24e04de9f152f1c38e3fa
   gvisor-tap-vsock:
     commit: 0b0819c174331f5b86d96db3ab7aad7dd126078e
     source: https://github.com/containers/gvisor-tap-vsock
