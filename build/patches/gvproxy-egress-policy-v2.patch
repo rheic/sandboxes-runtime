@@ -1,5 +1,5 @@
 diff --git a/cmd/gvproxy/config.go b/cmd/gvproxy/config.go
-index 16cbad47..0a99b9e7 100644
+index 16cbad4..0a99b9e 100644
 --- a/cmd/gvproxy/config.go
 +++ b/cmd/gvproxy/config.go
 @@ -24,31 +24,33 @@ const (
@@ -147,7 +147,7 @@ index 16cbad47..0a99b9e7 100644
  	// Make sure the qemu socket provided is valid syntax
  	if config.Interfaces.Qemu != "" {
 diff --git a/cmd/gvproxy/main.go b/cmd/gvproxy/main.go
-index 21ab61ee..3b1362c4 100644
+index 21ab61e..3b1362c 100644
 --- a/cmd/gvproxy/main.go
 +++ b/cmd/gvproxy/main.go
 @@ -5,6 +5,7 @@ import (
@@ -231,7 +231,7 @@ index 21ab61ee..3b1362c4 100644
  	apiToken, err := tokenauth.ReadToken(config.APITokenFile)
  	if err != nil {
 diff --git a/pkg/services/dns/dns.go b/pkg/services/dns/dns.go
-index aeeb9766..a447a928 100644
+index aeeb976..a447a92 100644
 --- a/pkg/services/dns/dns.go
 +++ b/pkg/services/dns/dns.go
 @@ -28,9 +28,12 @@ type upstreamResolver interface {
@@ -331,7 +331,7 @@ index aeeb9766..a447a928 100644
  	mux := dns.NewServeMux()
  	mux.HandleFunc(".", s.handler.handleUDP)
 diff --git a/pkg/services/dns/dns_test.go b/pkg/services/dns/dns_test.go
-index 53b4f1e3..d31271be 100644
+index 53b4f1e..d31271b 100644
 --- a/pkg/services/dns/dns_test.go
 +++ b/pkg/services/dns/dns_test.go
 @@ -199,7 +199,10 @@ var _ = ginkgo.Describe("dns add test", func() {
@@ -439,7 +439,7 @@ index 53b4f1e3..d31271be 100644
  	}, nil
 diff --git a/pkg/services/dns/egress_policy_test.go b/pkg/services/dns/egress_policy_test.go
 new file mode 100644
-index 00000000..f720f19b
+index 0000000..f720f19
 --- /dev/null
 +++ b/pkg/services/dns/egress_policy_test.go
 @@ -0,0 +1,38 @@
@@ -483,7 +483,7 @@ index 00000000..f720f19b
 +}
 diff --git a/pkg/services/dns/policy_dns.go b/pkg/services/dns/policy_dns.go
 new file mode 100644
-index 00000000..b651e7c3
+index 0000000..b651e7c
 --- /dev/null
 +++ b/pkg/services/dns/policy_dns.go
 @@ -0,0 +1,191 @@
@@ -680,7 +680,7 @@ index 00000000..b651e7c3
 +}
 diff --git a/pkg/services/dns/policy_dns_test.go b/pkg/services/dns/policy_dns_test.go
 new file mode 100644
-index 00000000..dda618ad
+index 0000000..dda618a
 --- /dev/null
 +++ b/pkg/services/dns/policy_dns_test.go
 @@ -0,0 +1,292 @@
@@ -978,7 +978,7 @@ index 00000000..dda618ad
 +}
 diff --git a/pkg/services/forwarder/clienthello.go b/pkg/services/forwarder/clienthello.go
 new file mode 100644
-index 00000000..3c6a490e
+index 0000000..3c6a490
 --- /dev/null
 +++ b/pkg/services/forwarder/clienthello.go
 @@ -0,0 +1,75 @@
@@ -1059,7 +1059,7 @@ index 00000000..3c6a490e
 +func (c *replayConn) Read(p []byte) (int, error) { return c.reader.Read(p) }
 diff --git a/pkg/services/forwarder/clienthello_test.go b/pkg/services/forwarder/clienthello_test.go
 new file mode 100644
-index 00000000..ddaf7429
+index 0000000..ddaf742
 --- /dev/null
 +++ b/pkg/services/forwarder/clienthello_test.go
 @@ -0,0 +1,105 @@
@@ -1170,7 +1170,7 @@ index 00000000..ddaf7429
 +}
 diff --git a/pkg/services/forwarder/nat_ipv6_test.go b/pkg/services/forwarder/nat_ipv6_test.go
 new file mode 100644
-index 00000000..7e789e57
+index 0000000..7e789e5
 --- /dev/null
 +++ b/pkg/services/forwarder/nat_ipv6_test.go
 @@ -0,0 +1,220 @@
@@ -1395,7 +1395,7 @@ index 00000000..7e789e57
 +	}
 +}
 diff --git a/pkg/services/forwarder/ports.go b/pkg/services/forwarder/ports.go
-index 1fb8f4f5..9911c8a4 100644
+index 1fb8f4f..9911c8a 100644
 --- a/pkg/services/forwarder/ports.go
 +++ b/pkg/services/forwarder/ports.go
 @@ -22,13 +22,15 @@ import (
@@ -1589,7 +1589,7 @@ index 1fb8f4f5..9911c8a4 100644
 +	return address, nil
  }
 diff --git a/pkg/services/forwarder/ports_test.go b/pkg/services/forwarder/ports_test.go
-index 7da8dd1d..b926df9a 100644
+index 7da8dd1..b926df9 100644
 --- a/pkg/services/forwarder/ports_test.go
 +++ b/pkg/services/forwarder/ports_test.go
 @@ -15,11 +15,56 @@ import (
@@ -1651,7 +1651,7 @@ index 7da8dd1d..b926df9a 100644
  	ginkgo.RunSpecs(t, "forwarder suite")
 diff --git a/pkg/services/forwarder/quic/initial.go b/pkg/services/forwarder/quic/initial.go
 new file mode 100644
-index 00000000..1ca368c4
+index 0000000..1ca368c
 --- /dev/null
 +++ b/pkg/services/forwarder/quic/initial.go
 @@ -0,0 +1,525 @@
@@ -2182,7 +2182,7 @@ index 00000000..1ca368c4
 +}
 diff --git a/pkg/services/forwarder/quic/initial_test.go b/pkg/services/forwarder/quic/initial_test.go
 new file mode 100644
-index 00000000..6b8b7c40
+index 0000000..6b8b7c4
 --- /dev/null
 +++ b/pkg/services/forwarder/quic/initial_test.go
 @@ -0,0 +1,281 @@
@@ -2468,7 +2468,7 @@ index 00000000..6b8b7c40
 +	return byte(value)
 +}
 diff --git a/pkg/services/forwarder/tcp.go b/pkg/services/forwarder/tcp.go
-index 6a1f548a..3014072e 100644
+index 6a1f548..3014072 100644
 --- a/pkg/services/forwarder/tcp.go
 +++ b/pkg/services/forwarder/tcp.go
 @@ -1,12 +1,15 @@
@@ -2625,7 +2625,7 @@ index 6a1f548a..3014072e 100644
  
 diff --git a/pkg/services/forwarder/tcp_policy_test.go b/pkg/services/forwarder/tcp_policy_test.go
 new file mode 100644
-index 00000000..3a6df481
+index 0000000..3a6df48
 --- /dev/null
 +++ b/pkg/services/forwarder/tcp_policy_test.go
 @@ -0,0 +1,284 @@
@@ -2914,7 +2914,7 @@ index 00000000..3a6df481
 +	}
 +}
 diff --git a/pkg/services/forwarder/udp.go b/pkg/services/forwarder/udp.go
-index 12694496..fb173585 100644
+index 1269449..fb17358 100644
 --- a/pkg/services/forwarder/udp.go
 +++ b/pkg/services/forwarder/udp.go
 @@ -1,10 +1,14 @@
@@ -3040,7 +3040,7 @@ index 12694496..fb173585 100644
  
  			// note that at this point packets that are sent to the current forwarder session
 diff --git a/pkg/services/forwarder/udp_proxy.go b/pkg/services/forwarder/udp_proxy.go
-index 6689fecc..ffe592c1 100644
+index 6689fec..ffe592c 100644
 --- a/pkg/services/forwarder/udp_proxy.go
 +++ b/pkg/services/forwarder/udp_proxy.go
 @@ -51,26 +51,42 @@ type connTrackMap map[connTrackKey]net.Conn
@@ -3175,7 +3175,7 @@ index 6689fecc..ffe592c1 100644
  
 diff --git a/pkg/services/forwarder/udp_proxy_policy_test.go b/pkg/services/forwarder/udp_proxy_policy_test.go
 new file mode 100644
-index 00000000..654b483a
+index 0000000..654b483
 --- /dev/null
 +++ b/pkg/services/forwarder/udp_proxy_policy_test.go
 @@ -0,0 +1,166 @@
@@ -3346,7 +3346,7 @@ index 00000000..654b483a
 +
 +var _ io.Closer = (*UDPProxy)(nil)
 diff --git a/pkg/tap/switch.go b/pkg/tap/switch.go
-index 96eee3c6..c10e8d82 100644
+index 96eee3c..c10e8d8 100644
 --- a/pkg/tap/switch.go
 +++ b/pkg/tap/switch.go
 @@ -131,7 +131,7 @@ func (e *Switch) txPkt(pkt *stack.PacketBuffer) error {
@@ -3380,7 +3380,7 @@ index 96eee3c6..c10e8d82 100644
  		pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
 diff --git a/pkg/tap/switch_ipv6_test.go b/pkg/tap/switch_ipv6_test.go
 new file mode 100644
-index 00000000..093bdc1c
+index 0000000..093bdc1
 --- /dev/null
 +++ b/pkg/tap/switch_ipv6_test.go
 @@ -0,0 +1,80 @@
@@ -3465,7 +3465,7 @@ index 00000000..093bdc1c
 +	}
 +}
 diff --git a/pkg/types/configuration.go b/pkg/types/configuration.go
-index 613b32a1..0ffa23aa 100644
+index 613b32a..0ffa23a 100644
 --- a/pkg/types/configuration.go
 +++ b/pkg/types/configuration.go
 @@ -34,6 +34,11 @@ type Configuration struct {
@@ -3497,7 +3497,7 @@ index 613b32a1..0ffa23aa 100644
  type Protocol string
 diff --git a/pkg/types/egress_policy.go b/pkg/types/egress_policy.go
 new file mode 100644
-index 00000000..8bc711a4
+index 0000000..8bc711a
 --- /dev/null
 +++ b/pkg/types/egress_policy.go
 @@ -0,0 +1,1152 @@
@@ -4655,7 +4655,7 @@ index 00000000..8bc711a4
 +}
 diff --git a/pkg/types/egress_policy_test.go b/pkg/types/egress_policy_test.go
 new file mode 100644
-index 00000000..0dde0d2a
+index 0000000..0dde0d2
 --- /dev/null
 +++ b/pkg/types/egress_policy_test.go
 @@ -0,0 +1,738 @@
@@ -5399,7 +5399,7 @@ index 00000000..0dde0d2a
 +}
 diff --git a/pkg/virtualnetwork/ipv6_publish_test.go b/pkg/virtualnetwork/ipv6_publish_test.go
 new file mode 100644
-index 00000000..04e30f9e
+index 0000000..04e30f9
 --- /dev/null
 +++ b/pkg/virtualnetwork/ipv6_publish_test.go
 @@ -0,0 +1,59 @@
@@ -5464,10 +5464,10 @@ index 00000000..04e30f9e
 +}
 diff --git a/pkg/virtualnetwork/ipv6_ra.go b/pkg/virtualnetwork/ipv6_ra.go
 new file mode 100644
-index 00000000..c794d783
+index 0000000..942d21e
 --- /dev/null
 +++ b/pkg/virtualnetwork/ipv6_ra.go
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,201 @@
 +package virtualnetwork
 +
 +import (
@@ -5490,14 +5490,42 @@ index 00000000..c794d783
 +	ipv6GuestGateway   = "fd72:6865:6963:0000::1"
 +	ipv6GuestPrefix    = "fd72:6865:6963:0000::/64"
 +	ipv6AllNodes       = "ff02::1"
-+	raInterval         = 30 * time.Second
++
++	// raInterval is the unsolicited advertisement interval. RFC 4861 requires
++	// the advertised router lifetime to be at least the maximum interval;
++	// three intervals leave room for one or two lost advertisements while a
++	// guest still refreshes the default route before it expires.
++	raInterval = 10 * time.Second
++
++	// raRouterLifetime is the advertised default-router lifetime in seconds.
++	raRouterLifetime = 30
++
++	// Prefix lifetimes stay independent of the router lifetime. The prefix
++	// preferred lifetime must not exceed the valid lifetime.
++	raPrefixValidLifetime     = 7200
++	raPrefixPreferredLifetime = 3600
++
++	raReadDeadline = 250 * time.Millisecond
++	raReadErrorGap = 100 * time.Millisecond
 +)
 +
++// icmpv6Conn is the subset of a gVisor raw ICMPv6 endpoint used by the router
++// advertiser. Keeping it small lets unit tests drive solicitation and periodic
++// refresh behavior without a live network stack.
++type icmpv6Conn interface {
++	ReadFrom([]byte) (int, net.Addr, error)
++	WriteTo([]byte, net.Addr) (int, error)
++	SetReadDeadline(time.Time) error
++	Close() error
++}
++
 +type ipv6RouterAdvertiser struct {
-+	conn   *gonet.UDPConn
-+	cancel context.CancelFunc
-+	done   chan struct{}
-+	once   sync.Once
++	conn        icmpv6Conn
++	interval    time.Duration
++	linkAddress net.HardwareAddr
++	cancel      context.CancelFunc
++	done        chan struct{}
++	once        sync.Once
 +}
 +
 +func startIPv6RouterAdvertiser(s *stack.Stack) (*ipv6RouterAdvertiser, error) {
@@ -5506,7 +5534,12 @@ index 00000000..c794d783
 +	if tcpErr != nil {
 +		return nil, errors.New(tcpErr.String())
 +	}
-+	if tcpErr := ep.Bind(tcpip.FullAddress{NIC: 1, Addr: tcpip.AddrFrom16Slice(net.ParseIP(ipv6GatewayAddress).To16())}); tcpErr != nil {
++	// Bind to the NIC rather than to fe80::1. A raw endpoint bound to a
++	// unicast address only sees packets addressed to that address, so Router
++	// Solicitations sent to ff02::2 were never received and guests had to wait
++	// for the next unsolicited advertisement. Binding to the NIC receives all
++	// ICMPv6 control traffic; the RA source still resolves to fe80::1.
++	if tcpErr := ep.Bind(tcpip.FullAddress{NIC: 1}); tcpErr != nil {
 +		ep.Close()
 +		return nil, errors.New(tcpErr.String())
 +	}
@@ -5516,10 +5549,24 @@ index 00000000..c794d783
 +			return nil, errors.New(tcpErr.String())
 +		}
 +	}
++	var linkAddress net.HardwareAddr
++	if info, ok := s.NICInfo()[1]; ok {
++		linkAddress = net.HardwareAddr(info.LinkAddress)
++	}
++	return startIPv6RouterAdvertiserOnConn(gonet.NewUDPConn(&wq, ep), raInterval, linkAddress), nil
++}
++
++func startIPv6RouterAdvertiserOnConn(conn icmpv6Conn, interval time.Duration, linkAddress net.HardwareAddr) *ipv6RouterAdvertiser {
 +	ctx, cancel := context.WithCancel(context.Background())
-+	r := &ipv6RouterAdvertiser{conn: gonet.NewUDPConn(&wq, ep), cancel: cancel, done: make(chan struct{})}
++	r := &ipv6RouterAdvertiser{
++		conn:        conn,
++		interval:    interval,
++		linkAddress: linkAddress,
++		cancel:      cancel,
++		done:        make(chan struct{}),
++	}
 +	go r.serve(ctx)
-+	return r, nil
++	return r
 +}
 +
 +func (r *ipv6RouterAdvertiser) serve(ctx context.Context) {
@@ -5534,10 +5581,11 @@ index 00000000..c794d783
 +			return
 +		case <-timer.C:
 +			_ = r.advertise()
-+			timer.Reset(raInterval)
++			timer.Reset(r.interval)
 +		default:
 +		}
-+		_ = r.conn.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
++
++		_ = r.conn.SetReadDeadline(time.Now().Add(raReadDeadline))
 +		n, _, err := r.conn.ReadFrom(buf)
 +		if err != nil {
 +			if ctx.Err() != nil {
@@ -5546,38 +5594,69 @@ index 00000000..c794d783
 +			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 +				continue
 +			}
-+			return
++			// A transient ICMPv6 read error (for example an asynchronous
++			// error queued by the stack) must not stop advertisements.
++			// Without this, a guest could lose the default route until the
++			// gateway is restarted.
++			select {
++			case <-ctx.Done():
++				return
++			case <-time.After(raReadErrorGap):
++				continue
++			}
 +		}
 +		if n >= header.ICMPv6MinimumSize && header.ICMPv6(buf[:n]).Type() == header.ICMPv6RouterSolicit {
 +			_ = r.advertise()
-+			timer.Reset(raInterval)
++			if !timer.Stop() {
++				select {
++				case <-timer.C:
++				default:
++				}
++			}
++			timer.Reset(r.interval)
 +		}
 +	}
 +}
 +
 +func (r *ipv6RouterAdvertiser) advertise() error {
-+	packet := makeRouterAdvertisement()
++	packet := makeRouterAdvertisement(r.linkAddress)
 +	_, err := r.conn.WriteTo(packet, &net.UDPAddr{IP: net.ParseIP(ipv6AllNodes).To16()})
 +	return err
 +}
 +
-+func makeRouterAdvertisement() []byte {
++func makeRouterAdvertisement(linkAddress net.HardwareAddr) []byte {
 +	const (
 +		icmpHeaderSize = 4
 +		raBodySize     = 12
 +		prefixOptSize  = 32
++		sllaOptSize    = 8
 +	)
-+	packet := make([]byte, icmpHeaderSize+raBodySize+prefixOptSize)
++	length := icmpHeaderSize + raBodySize + prefixOptSize
++	hasSLLA := len(linkAddress) == 6
++	if hasSLLA {
++		length += sllaOptSize
++	}
++	packet := make([]byte, length)
 +	packet[0] = byte(header.ICMPv6RouterAdvert)
-+	packet[icmpHeaderSize] = 64                               // current hop limit for guest traffic.
-+	binary.BigEndian.PutUint16(packet[icmpHeaderSize+2:], 90) // default-router lifetime.
-+	option := packet[icmpHeaderSize+raBodySize:]
++	packet[icmpHeaderSize] = 64 // current hop limit for guest traffic.
++	binary.BigEndian.PutUint16(packet[icmpHeaderSize+2:], raRouterLifetime)
++	offset := icmpHeaderSize + raBodySize
++	if hasSLLA {
++		// Source Link-Layer Address option: lets guests install a usable
++		// neighbor entry for the router without first sending a solicitation.
++		option := packet[offset : offset+sllaOptSize]
++		option[0] = 1 // Source Link-Layer Address option.
++		option[1] = 1 // 8 octets.
++		copy(option[2:], linkAddress)
++		offset += sllaOptSize
++	}
++	option := packet[offset:]
 +	option[0] = 3 // Prefix Information option.
 +	option[1] = 4 // 32 octets.
 +	option[2] = 64
 +	option[3] = 0xc0 // on-link and autonomous address configuration.
-+	binary.BigEndian.PutUint32(option[4:], 7200)
-+	binary.BigEndian.PutUint32(option[8:], 3600)
++	binary.BigEndian.PutUint32(option[4:], raPrefixValidLifetime)
++	binary.BigEndian.PutUint32(option[8:], raPrefixPreferredLifetime)
 +	copy(option[16:], net.ParseIP("fd72:6865:6963:0000::").To16())
 +	return packet
 +}
@@ -5592,19 +5671,24 @@ index 00000000..c794d783
 +}
 diff --git a/pkg/virtualnetwork/ipv6_ra_test.go b/pkg/virtualnetwork/ipv6_ra_test.go
 new file mode 100644
-index 00000000..c86cb06d
+index 0000000..50fe349
 --- /dev/null
 +++ b/pkg/virtualnetwork/ipv6_ra_test.go
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,236 @@
 +package virtualnetwork
 +
 +import (
 +	"bytes"
++	"net"
++	"os"
++	"sync"
 +	"testing"
++	"time"
 +
 +	"github.com/containers/gvisor-tap-vsock/pkg/types"
 +	"gvisor.dev/gvisor/pkg/tcpip/link/loopback"
 +	"gvisor.dev/gvisor/pkg/tcpip/link/sniffer"
++	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
 +)
 +
 +func TestIPv6StackAndRouterAdvertiserInitialize(t *testing.T) {
@@ -5627,6 +5711,9 @@ index 00000000..c86cb06d
 +	if !hasULA || !hasMulticast || !hasDefault {
 +		t.Fatalf("IPv6 routes missing: ULA=%v multicast=%v default=%v routes=%v", hasULA, hasMulticast, hasDefault, s.GetRouteTable())
 +	}
++	if !s.NICInfo()[1].Forwarding[ipv6.ProtocolNumber] {
++		t.Fatal("IPv6 forwarding is disabled; NDP would clear the NA Router flag")
++	}
 +	advertiser, err := startIPv6RouterAdvertiser(s)
 +	if err != nil {
 +		t.Fatal(err)
@@ -5642,25 +5729,61 @@ index 00000000..c86cb06d
 +		t.Fatal(err)
 +	}
 +	defer s.Close()
++	if s.NICInfo()[1].Forwarding[ipv6.ProtocolNumber] {
++		t.Fatal("IPv6 forwarding was enabled without the opt-in flag")
++	}
 +	if _, err := startIPv6RouterAdvertiser(s); err == nil {
 +		t.Fatal("IPv6 raw endpoint was available without the opt-in flag")
 +	}
 +}
 +
 +func TestRouterAdvertisementFields(t *testing.T) {
-+	packet := makeRouterAdvertisement()
-+	if len(packet) != 4+12+32 || packet[0] != byte(134) || packet[1] != 0 {
++	linkAddress := net.HardwareAddr{0x5a, 0x94, 0xef, 0xe4, 0x0c, 0xdd}
++	packet := makeRouterAdvertisement(linkAddress)
++	if len(packet) != 4+12+8+32 || packet[0] != byte(134) || packet[1] != 0 {
 +		t.Fatalf("invalid RA packet shape/type: %x", packet)
 +	}
-+	if packet[4] != 64 || packet[5] != 0 || packet[6] != 0 || packet[7] != 90 {
++	if packet[4] != 64 || packet[5] != 0 {
 +		t.Fatalf("invalid RA router fields: %x", packet[:16])
 +	}
-+	option := packet[16:]
++	routerLifetime := int(packet[6])<<8 | int(packet[7])
++	if routerLifetime != raRouterLifetime {
++		t.Fatalf("router lifetime=%d want %d", routerLifetime, raRouterLifetime)
++	}
++	if routerLifetime < 3*int(raInterval/time.Second) {
++		t.Fatalf("router lifetime %ds does not cover three %s advertisements", routerLifetime, raInterval)
++	}
++	slla := packet[16:24]
++	if slla[0] != 1 || slla[1] != 1 || !bytes.Equal(slla[2:], linkAddress) {
++		t.Fatalf("invalid source link-layer option: %x", slla)
++	}
++	option := packet[24:]
 +	if option[0] != 3 || option[1] != 4 || option[2] != 64 || option[3] != 0xc0 {
 +		t.Fatalf("invalid prefix-information option: %x", option)
 +	}
++	valid := int(option[4])<<24 | int(option[5])<<16 | int(option[6])<<8 | int(option[7])
++	preferred := int(option[8])<<24 | int(option[9])<<16 | int(option[10])<<8 | int(option[11])
++	if valid != raPrefixValidLifetime || preferred != raPrefixPreferredLifetime {
++		t.Fatalf("prefix lifetimes valid=%d preferred=%d", valid, preferred)
++	}
++	if preferred >= valid {
++		t.Fatalf("prefix preferred lifetime %ds must be shorter than valid %ds", preferred, valid)
++	}
++	if routerLifetime >= valid {
++		t.Fatalf("router lifetime %ds must be shorter than the prefix valid lifetime %ds", routerLifetime, valid)
++	}
 +	if got := string(option[16:]); got != string([]byte{0xfd, 0x72, 0x68, 0x65, 0x69, 0x63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}) {
 +		t.Fatalf("unexpected advertised prefix: %x", option[16:])
++	}
++}
++
++func TestRouterAdvertisementWithoutLinkAddress(t *testing.T) {
++	packet := makeRouterAdvertisement(nil)
++	if len(packet) != 4+12+32 {
++		t.Fatalf("RA without a link address has %d bytes, want 48", len(packet))
++	}
++	if packet[16] != 3 {
++		t.Fatalf("expected the prefix-information option first, got type %d", packet[16])
 +	}
 +}
 +
@@ -5695,8 +5818,101 @@ index 00000000..c86cb06d
 +		t.Fatalf("invalid RA packet header: hop=%d next=%d icmp=%d", packet[7], packet[6], packet[40])
 +	}
 +}
++
++type fakeICMPv6Conn struct {
++	mu       sync.Mutex
++	packets  [][]byte
++	dests    []net.Addr
++	reads    chan []byte
++	closed   chan struct{}
++	closeOne sync.Once
++}
++
++func newFakeICMPv6Conn() *fakeICMPv6Conn {
++	return &fakeICMPv6Conn{reads: make(chan []byte, 4), closed: make(chan struct{})}
++}
++
++func (f *fakeICMPv6Conn) ReadFrom(buf []byte) (int, net.Addr, error) {
++	select {
++	case packet := <-f.reads:
++		return copy(buf, packet), &net.UDPAddr{IP: net.IPv6linklocalallnodes}, nil
++	case <-f.closed:
++		return 0, nil, net.ErrClosed
++	case <-time.After(2 * time.Millisecond):
++		return 0, nil, os.ErrDeadlineExceeded
++	}
++}
++
++func (f *fakeICMPv6Conn) WriteTo(packet []byte, dest net.Addr) (int, error) {
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	f.packets = append(f.packets, append([]byte(nil), packet...))
++	f.dests = append(f.dests, dest)
++	return len(packet), nil
++}
++
++func (f *fakeICMPv6Conn) SetReadDeadline(time.Time) error { return nil }
++
++func (f *fakeICMPv6Conn) Close() error {
++	f.closeOne.Do(func() { close(f.closed) })
++	return nil
++}
++
++func (f *fakeICMPv6Conn) packetCount() int {
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	return len(f.packets)
++}
++
++func (f *fakeICMPv6Conn) lastDestIP() string {
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	if len(f.dests) == 0 {
++		return ""
++	}
++	if udp, ok := f.dests[len(f.dests)-1].(*net.UDPAddr); ok {
++		return udp.IP.String()
++	}
++	return f.dests[len(f.dests)-1].String()
++}
++
++func waitForPackets(t *testing.T, conn *fakeICMPv6Conn, want int) {
++	t.Helper()
++	deadline := time.Now().Add(2 * time.Second)
++	for time.Now().Before(deadline) {
++		if conn.packetCount() >= want {
++			return
++		}
++		time.Sleep(time.Millisecond)
++	}
++	t.Fatalf("advertiser wrote %d packets, want at least %d", conn.packetCount(), want)
++}
++
++func TestRouterAdvertiserSendsPeriodicRefreshes(t *testing.T) {
++	conn := newFakeICMPv6Conn()
++	a := startIPv6RouterAdvertiserOnConn(conn, 10*time.Millisecond, net.HardwareAddr{0x5a, 0x94, 0xef, 0xe4, 0x0c, 0xdd})
++	defer a.Close()
++	waitForPackets(t, conn, 3)
++	if dest := conn.lastDestIP(); dest != ipv6AllNodes {
++		t.Fatalf("advertisement destination=%s want %s", dest, ipv6AllNodes)
++	}
++}
++
++func TestRouterAdvertiserAnswersRouterSolicitation(t *testing.T) {
++	conn := newFakeICMPv6Conn()
++	a := startIPv6RouterAdvertiserOnConn(conn, time.Hour, net.HardwareAddr{0x5a, 0x94, 0xef, 0xe4, 0x0c, 0xdd})
++	defer a.Close()
++	waitForPackets(t, conn, 1)
++	solicitation := make([]byte, 8)
++	solicitation[0] = byte(133)
++	conn.reads <- solicitation
++	waitForPackets(t, conn, 2)
++	if dest := conn.lastDestIP(); dest != ipv6AllNodes {
++		t.Fatalf("solicited advertisement destination=%s want %s", dest, ipv6AllNodes)
++	}
++}
 diff --git a/pkg/virtualnetwork/mux.go b/pkg/virtualnetwork/mux.go
-index 36ec4571..bc83b321 100644
+index 36ec457..bc83b32 100644
 --- a/pkg/virtualnetwork/mux.go
 +++ b/pkg/virtualnetwork/mux.go
 @@ -103,7 +103,11 @@ func (n *VirtualNetwork) newServicesMux() *http.ServeMux {
@@ -5714,7 +5930,7 @@ index 36ec4571..bc83b321 100644
  // Mux returns the full mux (services + connect) wrapped with audit logging middleware.
 diff --git a/pkg/virtualnetwork/nat_table_test.go b/pkg/virtualnetwork/nat_table_test.go
 new file mode 100644
-index 00000000..21dbcec5
+index 0000000..21dbcec
 --- /dev/null
 +++ b/pkg/virtualnetwork/nat_table_test.go
 @@ -0,0 +1,82 @@
@@ -5801,7 +6017,7 @@ index 00000000..21dbcec5
 +	}
 +}
 diff --git a/pkg/virtualnetwork/services.go b/pkg/virtualnetwork/services.go
-index 3ed9a996..8a875b65 100644
+index 3ed9a99..8a875b6 100644
 --- a/pkg/virtualnetwork/services.go
 +++ b/pkg/virtualnetwork/services.go
 @@ -1,8 +1,12 @@
@@ -5947,7 +6163,7 @@ index 3ed9a996..8a875b65 100644
  	go func() {
  		if err := server.Serve(); err != nil {
 diff --git a/pkg/virtualnetwork/virtualnetwork.go b/pkg/virtualnetwork/virtualnetwork.go
-index b2b44614..d4f245e8 100644
+index b2b4461..95b8004 100644
 --- a/pkg/virtualnetwork/virtualnetwork.go
 +++ b/pkg/virtualnetwork/virtualnetwork.go
 @@ -17,8 +17,10 @@ import (
@@ -6129,7 +6345,7 @@ index b2b44614..d4f245e8 100644
  
  	s.SetSpoofing(1, true)
  	s.SetPromiscuousMode(1, true)
-@@ -160,19 +246,30 @@ func createStack(configuration *types.Configuration, endpoint stack.LinkEndpoint
+@@ -160,19 +246,42 @@ func createStack(configuration *types.Configuration, endpoint stack.LinkEndpoint
  	if err != nil {
  		return nil, fmt.Errorf("cannot parse subnet: %w", err)
  	}
@@ -6144,6 +6360,18 @@ index b2b44614..d4f245e8 100644
 +	}
 +	routes = append(routes, ipv6Routes...)
 +	s.SetRouteTable(routes)
++	if configuration.IPv6Enabled {
++		// The gateway advertises itself as an IPv6 router. A netstack NIC with
++		// forwarding disabled answers Neighbor Solicitations for that router
++		// with the NA Router flag cleared; Linux then demotes fe80::1 from the
++		// default-router list and deletes the RA-installed default route until
++		// the next advertisement. Forwarding is on only for the single guest
++		// NIC, and the IPv6 default route still delivers off-prefix packets to
++		// the fail-closed userspace forwarders.
++		if _, tcpErr := s.SetNICForwarding(1, ipv6.ProtocolNumber, true); tcpErr != nil {
++			return nil, errors.New(tcpErr.String())
++		}
++	}
  
  	return s, nil
  }
@@ -6163,7 +6391,7 @@ index b2b44614..d4f245e8 100644
  	for local, remote := range configuration.Forwards {
  		if strings.HasPrefix(local, "udp:") {
  			if err := fw.Expose(types.UDP, strings.TrimPrefix(local, "udp:"), remote); err != nil {
-@@ -186,3 +283,31 @@ func createPortsForwarder(configuration *types.Configuration, s *stack.Stack) (*
+@@ -186,3 +295,31 @@ func createPortsForwarder(configuration *types.Configuration, s *stack.Stack) (*
  	}
  	return fw, nil
  }
@@ -6197,7 +6425,7 @@ index b2b44614..d4f245e8 100644
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/dhcpv6configurationfromndpra_string.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/dhcpv6configurationfromndpra_string.go
 new file mode 100644
-index 00000000..09ba133b
+index 0000000..09ba133
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/dhcpv6configurationfromndpra_string.go
 @@ -0,0 +1,40 @@
@@ -6243,7 +6471,7 @@ index 00000000..09ba133b
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/icmp.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/icmp.go
 new file mode 100644
-index 00000000..eb85f450
+index 0000000..eb85f45
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/icmp.go
 @@ -0,0 +1,1230 @@
@@ -7479,7 +7707,7 @@ index 00000000..eb85f450
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6.go
 new file mode 100644
-index 00000000..b4a38a56
+index 0000000..b4a38a5
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6.go
 @@ -0,0 +1,2918 @@
@@ -10403,7 +10631,7 @@ index 00000000..b4a38a56
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6_state_autogen.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6_state_autogen.go
 new file mode 100644
-index 00000000..2f92edd6
+index 0000000..2f92edd
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6_state_autogen.go
 @@ -0,0 +1,1046 @@
@@ -11455,7 +11683,7 @@ index 00000000..2f92edd6
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/mld.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/mld.go
 new file mode 100644
-index 00000000..56dba24b
+index 0000000..56dba24
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/mld.go
 @@ -0,0 +1,478 @@
@@ -11939,7 +12167,7 @@ index 00000000..56dba24b
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ndp.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ndp.go
 new file mode 100644
-index 00000000..5be647ed
+index 0000000..5be647e
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ndp.go
 @@ -0,0 +1,2033 @@
@@ -13978,7 +14206,7 @@ index 00000000..5be647ed
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/stats.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/stats.go
 new file mode 100644
-index 00000000..6c5d98e2
+index 0000000..6c5d98e
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/stats.go
 @@ -0,0 +1,145 @@
@@ -14128,7 +14356,7 @@ index 00000000..6c5d98e2
 +
 +// LINT.ThenChange(../../tcpip.go:ICMPv6Stats)
 diff --git a/vendor/modules.txt b/vendor/modules.txt
-index ad2e3d33..9ed48df7 100644
+index ad2e3d3..9ed48df 100644
 --- a/vendor/modules.txt
 +++ b/vendor/modules.txt
 @@ -309,6 +309,7 @@ gvisor.dev/gvisor/pkg/tcpip/network/internal/fragmentation
