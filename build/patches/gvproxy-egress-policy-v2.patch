@@ -1170,10 +1170,10 @@ index 00000000..ddaf7429
 +}
 diff --git a/pkg/services/forwarder/nat_ipv6_test.go b/pkg/services/forwarder/nat_ipv6_test.go
 new file mode 100644
-index 00000000..c49cc380
+index 00000000..7e789e57
 --- /dev/null
 +++ b/pkg/services/forwarder/nat_ipv6_test.go
-@@ -0,0 +1,215 @@
+@@ -0,0 +1,220 @@
 +package forwarder
 +
 +import (
@@ -1253,6 +1253,8 @@ index 00000000..c49cc380
 +				return
 +			}
 +			accepted.Add(1)
++			buf := make([]byte, 4)
++			_, _ = io.ReadFull(conn, buf)
 +			_, _ = io.WriteString(conn, payload)
 +			_ = conn.Close()
 +		}
@@ -1261,7 +1263,7 @@ index 00000000..c49cc380
 +	return port, &accepted
 +}
 +
-+func dialGuestIPv6TCP(s *stack.Stack, port uint16) (string, error) {
++func dialGuestIPv6TCP(s *stack.Stack, port uint16, request string) (string, error) {
 +	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 +	defer cancel()
 +	conn, err := gonet.DialContextTCP(ctx, s, tcpip.FullAddress{NIC: 1, Addr: testIPv6Address(testGuestIPv6Virtual), Port: port}, ipv6.ProtocolNumber)
@@ -1270,6 +1272,9 @@ index 00000000..c49cc380
 +	}
 +	defer conn.Close()
 +	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
++	if _, err := io.WriteString(conn, request); err != nil {
++		return "", err
++	}
 +	body, err := io.ReadAll(conn)
 +	return string(body), err
 +}
@@ -1287,7 +1292,7 @@ index 00000000..c49cc380
 +	}
 +	s.SetTransportProtocolHandler(tcp.ProtocolNumber, TCP(s, translation, &mu, false, 16, 500*time.Millisecond, holder).HandlePacket)
 +
-+	body, err := dialGuestIPv6TCP(s, port)
++	body, err := dialGuestIPv6TCP(s, port, "ping")
 +	if err != nil || body != "nat-v6-ok" {
 +		t.Fatalf("IPv6 NAT egress body=%q err=%v", body, err)
 +	}
@@ -1298,7 +1303,7 @@ index 00000000..c49cc380
 +	if err := holder.Update(&types.EgressPolicy{Revision: "2", Deny: []types.EgressRule{{Protocol: "tcp", CIDR: testGuestIPv6Virtual + "/128", Port: port}}}); err != nil {
 +		t.Fatal(err)
 +	}
-+	if _, err := dialGuestIPv6TCP(s, port); err == nil {
++	if _, err := dialGuestIPv6TCP(s, port, "ping"); err == nil {
 +		t.Fatal("IPv6 deny rule did not block the NAT-translated destination")
 +	}
 +	if got := accepted.Load(); got != 1 {
@@ -1315,7 +1320,7 @@ index 00000000..c49cc380
 +	var mu sync.Mutex
 +	s.SetTransportProtocolHandler(tcp.ProtocolNumber, TCP(s, map[tcpip.Address]tcpip.Address{}, &mu, false, 16, 250*time.Millisecond, holder).HandlePacket)
 +
-+	if _, err := dialGuestIPv6TCP(s, port); err == nil {
++	if _, err := dialGuestIPv6TCP(s, port, "ping"); err == nil {
 +		t.Fatal("guest-visible ULA without a NAT entry unexpectedly connected")
 +	}
 +	if got := accepted.Load(); got != 0 {
