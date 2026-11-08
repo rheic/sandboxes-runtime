@@ -1,5 +1,5 @@
 diff --git a/cmd/gvproxy/config.go b/cmd/gvproxy/config.go
-index 16cbad470493d04ab90a1588de48d38f5f41f878..0a99b9e711d39900ff95daab378f0484b53d6c37 100644
+index 16cbad47..0a99b9e7 100644
 --- a/cmd/gvproxy/config.go
 +++ b/cmd/gvproxy/config.go
 @@ -24,31 +24,33 @@ const (
@@ -147,7 +147,7 @@ index 16cbad470493d04ab90a1588de48d38f5f41f878..0a99b9e711d39900ff95daab378f0484
  	// Make sure the qemu socket provided is valid syntax
  	if config.Interfaces.Qemu != "" {
 diff --git a/cmd/gvproxy/main.go b/cmd/gvproxy/main.go
-index 21ab61eeafd77d8eb1d8d7aefa7ba12b35385b5b..3b1362c4bd613fc6851cf14270bf18e668dfad0e 100644
+index 21ab61ee..3b1362c4 100644
 --- a/cmd/gvproxy/main.go
 +++ b/cmd/gvproxy/main.go
 @@ -5,6 +5,7 @@ import (
@@ -231,7 +231,7 @@ index 21ab61eeafd77d8eb1d8d7aefa7ba12b35385b5b..3b1362c4bd613fc6851cf14270bf18e6
  	apiToken, err := tokenauth.ReadToken(config.APITokenFile)
  	if err != nil {
 diff --git a/pkg/services/dns/dns.go b/pkg/services/dns/dns.go
-index aeeb97666cff861427634a6cecb140ada9f72f88..a447a928216636a420db27911b96ba65524f1181 100644
+index aeeb9766..a447a928 100644
 --- a/pkg/services/dns/dns.go
 +++ b/pkg/services/dns/dns.go
 @@ -28,9 +28,12 @@ type upstreamResolver interface {
@@ -331,7 +331,7 @@ index aeeb97666cff861427634a6cecb140ada9f72f88..a447a928216636a420db27911b96ba65
  	mux := dns.NewServeMux()
  	mux.HandleFunc(".", s.handler.handleUDP)
 diff --git a/pkg/services/dns/dns_test.go b/pkg/services/dns/dns_test.go
-index 53b4f1e363d6ee5d4a1f362e2bc282f1fe18ab28..d31271bea1bd3d3ca58574fd91e6957c37440035 100644
+index 53b4f1e3..d31271be 100644
 --- a/pkg/services/dns/dns_test.go
 +++ b/pkg/services/dns/dns_test.go
 @@ -199,7 +199,10 @@ var _ = ginkgo.Describe("dns add test", func() {
@@ -439,7 +439,7 @@ index 53b4f1e363d6ee5d4a1f362e2bc282f1fe18ab28..d31271bea1bd3d3ca58574fd91e6957c
  	}, nil
 diff --git a/pkg/services/dns/egress_policy_test.go b/pkg/services/dns/egress_policy_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..f720f19b538b39b76479a096d43360dd78bed73a
+index 00000000..f720f19b
 --- /dev/null
 +++ b/pkg/services/dns/egress_policy_test.go
 @@ -0,0 +1,38 @@
@@ -483,7 +483,7 @@ index 0000000000000000000000000000000000000000..f720f19b538b39b76479a096d43360dd
 +}
 diff --git a/pkg/services/dns/policy_dns.go b/pkg/services/dns/policy_dns.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..b651e7c38b71150ef28233858effadccf49224f2
+index 00000000..b651e7c3
 --- /dev/null
 +++ b/pkg/services/dns/policy_dns.go
 @@ -0,0 +1,191 @@
@@ -680,7 +680,7 @@ index 0000000000000000000000000000000000000000..b651e7c38b71150ef28233858effadcc
 +}
 diff --git a/pkg/services/dns/policy_dns_test.go b/pkg/services/dns/policy_dns_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..dda618ad88739e2634fb93356189c6f8499e0305
+index 00000000..dda618ad
 --- /dev/null
 +++ b/pkg/services/dns/policy_dns_test.go
 @@ -0,0 +1,292 @@
@@ -978,7 +978,7 @@ index 0000000000000000000000000000000000000000..dda618ad88739e2634fb93356189c6f8
 +}
 diff --git a/pkg/services/forwarder/clienthello.go b/pkg/services/forwarder/clienthello.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..3c6a490ed493d00f256a3246f54f65a994592561
+index 00000000..3c6a490e
 --- /dev/null
 +++ b/pkg/services/forwarder/clienthello.go
 @@ -0,0 +1,75 @@
@@ -1059,7 +1059,7 @@ index 0000000000000000000000000000000000000000..3c6a490ed493d00f256a3246f54f65a9
 +func (c *replayConn) Read(p []byte) (int, error) { return c.reader.Read(p) }
 diff --git a/pkg/services/forwarder/clienthello_test.go b/pkg/services/forwarder/clienthello_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..ddaf742962a031b65b78492efe40aaa473153aa3
+index 00000000..ddaf7429
 --- /dev/null
 +++ b/pkg/services/forwarder/clienthello_test.go
 @@ -0,0 +1,105 @@
@@ -1169,7 +1169,7 @@ index 0000000000000000000000000000000000000000..ddaf742962a031b65b78492efe40aaa4
 +	})
 +}
 diff --git a/pkg/services/forwarder/ports.go b/pkg/services/forwarder/ports.go
-index 1fb8f4f52855ca2c3279ab04851c19afec3133f6..9911c8a471e2748bf31ed5a9a84e42a6bee1fe0a 100644
+index 1fb8f4f5..9911c8a4 100644
 --- a/pkg/services/forwarder/ports.go
 +++ b/pkg/services/forwarder/ports.go
 @@ -22,13 +22,15 @@ import (
@@ -1363,7 +1363,7 @@ index 1fb8f4f52855ca2c3279ab04851c19afec3133f6..9911c8a471e2748bf31ed5a9a84e42a6
 +	return address, nil
  }
 diff --git a/pkg/services/forwarder/ports_test.go b/pkg/services/forwarder/ports_test.go
-index 7da8dd1d758b8e1307ef34f5010de55f34707bf7..b926df9aaa257b539b61e0467b9be1a813f74e1e 100644
+index 7da8dd1d..b926df9a 100644
 --- a/pkg/services/forwarder/ports_test.go
 +++ b/pkg/services/forwarder/ports_test.go
 @@ -15,11 +15,56 @@ import (
@@ -1425,7 +1425,7 @@ index 7da8dd1d758b8e1307ef34f5010de55f34707bf7..b926df9aaa257b539b61e0467b9be1a8
  	ginkgo.RunSpecs(t, "forwarder suite")
 diff --git a/pkg/services/forwarder/quic/initial.go b/pkg/services/forwarder/quic/initial.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..1ca368c42a0d45017d9bc880f4c9cba54cf50699
+index 00000000..1ca368c4
 --- /dev/null
 +++ b/pkg/services/forwarder/quic/initial.go
 @@ -0,0 +1,525 @@
@@ -1956,10 +1956,10 @@ index 0000000000000000000000000000000000000000..1ca368c42a0d45017d9bc880f4c9cba5
 +}
 diff --git a/pkg/services/forwarder/quic/initial_test.go b/pkg/services/forwarder/quic/initial_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..be8ece1e51baa6868843297d52ccf83335d6c117
+index 00000000..6b8b7c40
 --- /dev/null
 +++ b/pkg/services/forwarder/quic/initial_test.go
-@@ -0,0 +1,247 @@
+@@ -0,0 +1,281 @@
 +package quic
 +
 +import (
@@ -2091,6 +2091,40 @@ index 0000000000000000000000000000000000000000..be8ece1e51baa6868843297d52ccf833
 +	}
 +}
 +
++func TestParseClientInitialRejectsRetryAndZeroRTT(t *testing.T) {
++	for _, version := range []uint32{Version1, Version2} {
++		initialType := byte(0)
++		if version == Version2 {
++			initialType = 1
++		}
++		for packetType := byte(0); packetType < 4; packetType++ {
++			if packetType == initialType {
++				continue
++			}
++			t.Run(fmt.Sprintf("version-%x/type-%d", version, packetType), func(t *testing.T) {
++				packet := makeTestInitial(t, version, "example.test")
++				packet[0] = (packet[0] &^ 0x30) | packetType<<4
++				if _, _, err := ParseClientInitial(packet); err == nil {
++					t.Fatalf("non-Initial packet type %d accepted for QUIC version %#x", packetType, version)
++				}
++			})
++		}
++	}
++}
++
++func TestClientHelloSNIRejectsECH(t *testing.T) {
++	body := make([]byte, 47)
++	body[0], body[1] = 3, 3 // legacy_version
++	body[34] = 0 // empty session ID
++	copy(body[35:39], []byte{0, 2, 0x13, 1}) // one cipher suite
++	body[39], body[40] = 1, 0 // null compression
++	copy(body[41:47], []byte{0, 4, 0xfe, 0x0d, 0, 0}) // encrypted_client_hello extension
++	clientHello := append([]byte{1, 0, 0, byte(len(body))}, body...)
++	if _, err := clientHelloSNI(clientHello); err == nil {
++		t.Fatal("ECH ClientHello accepted for domain classification")
++	}
++}
++
 +func FuzzParseClientInitialNeverPanics(f *testing.F) {
 +	f.Add([]byte{0xc0, 0, 0, 0, 1, 8, 1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0})
 +	f.Fuzz(func(t *testing.T, b []byte) {
@@ -2208,7 +2242,7 @@ index 0000000000000000000000000000000000000000..be8ece1e51baa6868843297d52ccf833
 +	return byte(value)
 +}
 diff --git a/pkg/services/forwarder/tcp.go b/pkg/services/forwarder/tcp.go
-index 6a1f548a60a116c67078b869b80c4694dfc93101..cd1badb7cf63b65703419d3fa58fafe0fbdb39cb 100644
+index 6a1f548a..cd1badb7 100644
 --- a/pkg/services/forwarder/tcp.go
 +++ b/pkg/services/forwarder/tcp.go
 @@ -1,12 +1,15 @@
@@ -2349,7 +2383,7 @@ index 6a1f548a60a116c67078b869b80c4694dfc93101..cd1badb7cf63b65703419d3fa58fafe0
  
 diff --git a/pkg/services/forwarder/tcp_policy_test.go b/pkg/services/forwarder/tcp_policy_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..3a6df481b7fd697bc09c5ee9f66d91c75af3414f
+index 00000000..3a6df481
 --- /dev/null
 +++ b/pkg/services/forwarder/tcp_policy_test.go
 @@ -0,0 +1,284 @@
@@ -2638,7 +2672,7 @@ index 0000000000000000000000000000000000000000..3a6df481b7fd697bc09c5ee9f66d91c7
 +	}
 +}
 diff --git a/pkg/services/forwarder/udp.go b/pkg/services/forwarder/udp.go
-index 126944960a5745e15392edf1cecd376913405f29..fb173585c4d249e3b15337cc4b34714c9db9deff 100644
+index 12694496..fb173585 100644
 --- a/pkg/services/forwarder/udp.go
 +++ b/pkg/services/forwarder/udp.go
 @@ -1,10 +1,14 @@
@@ -2764,7 +2798,7 @@ index 126944960a5745e15392edf1cecd376913405f29..fb173585c4d249e3b15337cc4b34714c
  
  			// note that at this point packets that are sent to the current forwarder session
 diff --git a/pkg/services/forwarder/udp_proxy.go b/pkg/services/forwarder/udp_proxy.go
-index 6689fecc034d36936355effeddb2a678306a6428..ffe592c139e97933f1f16d417c1b88b60eaf591f 100644
+index 6689fecc..ffe592c1 100644
 --- a/pkg/services/forwarder/udp_proxy.go
 +++ b/pkg/services/forwarder/udp_proxy.go
 @@ -51,26 +51,42 @@ type connTrackMap map[connTrackKey]net.Conn
@@ -2899,7 +2933,7 @@ index 6689fecc034d36936355effeddb2a678306a6428..ffe592c139e97933f1f16d417c1b88b6
  
 diff --git a/pkg/services/forwarder/udp_proxy_policy_test.go b/pkg/services/forwarder/udp_proxy_policy_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..654b483a8ffd18b351b0a654782b87021ce6803e
+index 00000000..654b483a
 --- /dev/null
 +++ b/pkg/services/forwarder/udp_proxy_policy_test.go
 @@ -0,0 +1,166 @@
@@ -3070,7 +3104,7 @@ index 0000000000000000000000000000000000000000..654b483a8ffd18b351b0a654782b8702
 +
 +var _ io.Closer = (*UDPProxy)(nil)
 diff --git a/pkg/tap/switch.go b/pkg/tap/switch.go
-index 96eee3c6e58ae9ddf577194d2a764c375855b3ec..c10e8d82657db6a7b8be0b140a813132757ffdc5 100644
+index 96eee3c6..c10e8d82 100644
 --- a/pkg/tap/switch.go
 +++ b/pkg/tap/switch.go
 @@ -131,7 +131,7 @@ func (e *Switch) txPkt(pkt *stack.PacketBuffer) error {
@@ -3104,7 +3138,7 @@ index 96eee3c6e58ae9ddf577194d2a764c375855b3ec..c10e8d82657db6a7b8be0b140a813132
  		pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
 diff --git a/pkg/tap/switch_ipv6_test.go b/pkg/tap/switch_ipv6_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..093bdc1c2fe5021fb02ced3a03bfc5ec27f9aff4
+index 00000000..093bdc1c
 --- /dev/null
 +++ b/pkg/tap/switch_ipv6_test.go
 @@ -0,0 +1,80 @@
@@ -3189,7 +3223,7 @@ index 0000000000000000000000000000000000000000..093bdc1c2fe5021fb02ced3a03bfc5ec
 +	}
 +}
 diff --git a/pkg/types/configuration.go b/pkg/types/configuration.go
-index 613b32a146df8fb020c17fc3b34eaedbecbacc72..0ffa23aa92b5a9071ebffa80cdcda87cd7fe3e82 100644
+index 613b32a1..0ffa23aa 100644
 --- a/pkg/types/configuration.go
 +++ b/pkg/types/configuration.go
 @@ -34,6 +34,11 @@ type Configuration struct {
@@ -3221,7 +3255,7 @@ index 613b32a146df8fb020c17fc3b34eaedbecbacc72..0ffa23aa92b5a9071ebffa80cdcda87c
  type Protocol string
 diff --git a/pkg/types/egress_policy.go b/pkg/types/egress_policy.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..8bc711a48e6a3af685c28b1ff1d1a54e408377a6
+index 00000000..8bc711a4
 --- /dev/null
 +++ b/pkg/types/egress_policy.go
 @@ -0,0 +1,1152 @@
@@ -4379,7 +4413,7 @@ index 0000000000000000000000000000000000000000..8bc711a48e6a3af685c28b1ff1d1a54e
 +}
 diff --git a/pkg/types/egress_policy_test.go b/pkg/types/egress_policy_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..0dde0d2ad8c8e10129353e9b0369d0dc140bc2d9
+index 00000000..0dde0d2a
 --- /dev/null
 +++ b/pkg/types/egress_policy_test.go
 @@ -0,0 +1,738 @@
@@ -5121,22 +5155,9 @@ index 0000000000000000000000000000000000000000..0dde0d2ad8c8e10129353e9b0369d0dc
 +		_ = compiled.MatchString(name)
 +	})
 +}
-diff --git a/pkg/types/version.go b/pkg/types/version.go
-index f7458469896b2904a64a483a4aabf03d5878e1ed..c371601c5dd389a258ffbb9d0adfb81e9169bfe5 100644
---- a/pkg/types/version.go
-+++ b/pkg/types/version.go
-@@ -12,7 +12,7 @@ var (
- 	gitVersion = ""
- 	// set through .gitattributes when `git archive` is used
- 	// see https://icinga.com/blog/2022/05/25/embedding-git-commit-information-in-go-binaries/
--	gitArchiveVersion = ""
-+	gitArchiveVersion = "$Format:%(describe)$"
- )
- 
- type version struct {
 diff --git a/pkg/virtualnetwork/ipv6_publish_test.go b/pkg/virtualnetwork/ipv6_publish_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..04e30f9e897f3cfc9a18933044e7167d7e407680
+index 00000000..04e30f9e
 --- /dev/null
 +++ b/pkg/virtualnetwork/ipv6_publish_test.go
 @@ -0,0 +1,59 @@
@@ -5201,7 +5222,7 @@ index 0000000000000000000000000000000000000000..04e30f9e897f3cfc9a18933044e7167d
 +}
 diff --git a/pkg/virtualnetwork/ipv6_ra.go b/pkg/virtualnetwork/ipv6_ra.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..c794d783387dcca352c17f2694c464ee9b2b60c2
+index 00000000..c794d783
 --- /dev/null
 +++ b/pkg/virtualnetwork/ipv6_ra.go
 @@ -0,0 +1,122 @@
@@ -5329,7 +5350,7 @@ index 0000000000000000000000000000000000000000..c794d783387dcca352c17f2694c464ee
 +}
 diff --git a/pkg/virtualnetwork/ipv6_ra_test.go b/pkg/virtualnetwork/ipv6_ra_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..c86cb06d8fcc8cc02a4c75c9a847f31da2841ea3
+index 00000000..c86cb06d
 --- /dev/null
 +++ b/pkg/virtualnetwork/ipv6_ra_test.go
 @@ -0,0 +1,99 @@
@@ -5433,7 +5454,7 @@ index 0000000000000000000000000000000000000000..c86cb06d8fcc8cc02a4c75c9a847f31d
 +	}
 +}
 diff --git a/pkg/virtualnetwork/mux.go b/pkg/virtualnetwork/mux.go
-index 36ec4571ebdd7a0cb4fbfdd4d25b6548cb0fe020..bc83b321d60b2b045130e5223587bd78685f7237 100644
+index 36ec4571..bc83b321 100644
 --- a/pkg/virtualnetwork/mux.go
 +++ b/pkg/virtualnetwork/mux.go
 @@ -103,7 +103,11 @@ func (n *VirtualNetwork) newServicesMux() *http.ServeMux {
@@ -5450,7 +5471,7 @@ index 36ec4571ebdd7a0cb4fbfdd4d25b6548cb0fe020..bc83b321d60b2b045130e5223587bd78
  
  // Mux returns the full mux (services + connect) wrapped with audit logging middleware.
 diff --git a/pkg/virtualnetwork/services.go b/pkg/virtualnetwork/services.go
-index 3ed9a996fa91843cb8ea37fc0ff06aedf680fad1..32dc1ac0173fe19d4a86068f75fa7b9ef4dea764 100644
+index 3ed9a996..32dc1ac0 100644
 --- a/pkg/virtualnetwork/services.go
 +++ b/pkg/virtualnetwork/services.go
 @@ -1,6 +1,9 @@
@@ -5561,7 +5582,7 @@ index 3ed9a996fa91843cb8ea37fc0ff06aedf680fad1..32dc1ac0173fe19d4a86068f75fa7b9e
  	go func() {
  		if err := server.Serve(); err != nil {
 diff --git a/pkg/virtualnetwork/virtualnetwork.go b/pkg/virtualnetwork/virtualnetwork.go
-index b2b4461443590ca861eff3c36cae338809226319..d4f245e8f24a5d2883b40f65f62ed442fba28de6 100644
+index b2b44614..d4f245e8 100644
 --- a/pkg/virtualnetwork/virtualnetwork.go
 +++ b/pkg/virtualnetwork/virtualnetwork.go
 @@ -17,8 +17,10 @@ import (
@@ -5809,158 +5830,9 @@ index b2b4461443590ca861eff3c36cae338809226319..d4f245e8f24a5d2883b40f65f62ed442
 +	}
 +	return candidates[0], nil
 +}
-diff --git a/tools/vendor/github.com/tommy-muehle/go-mnd/v2/.editorconfig b/tools/vendor/github.com/tommy-muehle/go-mnd/v2/.editorconfig
-new file mode 100644
-index 0000000000000000000000000000000000000000..fe2c20fb0b184f3e2daab583253f5573eb50266a
---- /dev/null
-+++ b/tools/vendor/github.com/tommy-muehle/go-mnd/v2/.editorconfig
-@@ -0,0 +1,21 @@
-+root = true
-+
-+[*]
-+charset = utf-8
-+indent_size = 4
-+indent_style = space
-+end_of_line = lf
-+insert_final_newline = true
-+trim_trailing_whitespace = true
-+
-+[*.md]
-+trim_trailing_whitespace = false
-+
-+[*.json]
-+indent_size = 2
-+
-+[*.{yaml,yml}]
-+indent_size = 2
-+
-+[Makefile]
-+indent_style = tab
-diff --git a/tools/vendor/github.com/tommy-muehle/go-mnd/v2/.gitattributes b/tools/vendor/github.com/tommy-muehle/go-mnd/v2/.gitattributes
-new file mode 100644
-index 0000000000000000000000000000000000000000..005358190d908be5bd2567d611586849994bdad7
---- /dev/null
-+++ b/tools/vendor/github.com/tommy-muehle/go-mnd/v2/.gitattributes
-@@ -0,0 +1,9 @@
-+/.gitattributes  export-ignore
-+/.gitignore      export-ignore
-+/.editorconfig   export-ignore
-+/.goreleaser.yml export-ignore
-+/.github/        export-ignore
-+/examples/       export-ignore
-+/testdata/       export-ignore
-+/tools/          export-ignore
-+/Makefile        export-ignore
-diff --git a/tools/vendor/github.com/tommy-muehle/go-mnd/v2/.gitignore b/tools/vendor/github.com/tommy-muehle/go-mnd/v2/.gitignore
-new file mode 100644
-index 0000000000000000000000000000000000000000..abc11b33030437e7e78648e8360b0f47dba539de
---- /dev/null
-+++ b/tools/vendor/github.com/tommy-muehle/go-mnd/v2/.gitignore
-@@ -0,0 +1,3 @@
-+build/
-+dist/
-+coverage.txt
-diff --git a/tools/vendor/github.com/tommy-muehle/go-mnd/v2/.goreleaser.yml b/tools/vendor/github.com/tommy-muehle/go-mnd/v2/.goreleaser.yml
-new file mode 100644
-index 0000000000000000000000000000000000000000..7516de0b95ca9f6dab0f4213f7eac6017e47bb07
---- /dev/null
-+++ b/tools/vendor/github.com/tommy-muehle/go-mnd/v2/.goreleaser.yml
-@@ -0,0 +1,54 @@
-+env:
-+  - GO_VERSION=1.16
-+
-+before:
-+  hooks:
-+    - go mod download
-+
-+builds:
-+  - main: ./cmd/mnd/main.go
-+    binary: mnd
-+    goos:
-+      - windows
-+      - darwin
-+      - linux
-+    goarch:
-+      - amd64
-+    ldflags: -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.buildTime={{.Date}}`.
-+
-+archives:
-+  - format: tar.gz
-+    format_overrides:
-+      - goos: windows
-+        format: zip
-+
-+brews:
-+  - name: mnd
-+    tap:
-+      owner: tommy-muehle
-+      name: homebrew-tap
-+    folder: Formula
-+    homepage: https://github.com/tommy-muehle/go-mnd
-+    description: Magic number detector for Go
-+    test: |
-+      system "#{bin}/mnd --version"
-+    install: |
-+      bin.install "mnd"
-+
-+dockers:
-+  -
-+    goos: linux
-+    goarch: amd64
-+    image_templates:
-+      - "tommymuehle/go-mnd:latest"
-+      - "tommymuehle/go-mnd:{{ .Tag }}"
-+    build_flag_templates:
-+      - "--build-arg=GO_VERSION={{.Env.GO_VERSION}}"
-+    extra_files:
-+      - checks
-+      - cmd
-+      - config
-+      - analyzer.go
-+      - entrypoint.sh
-+      - go.mod
-+      - go.sum
-diff --git a/tools/vendor/github.com/tommy-muehle/go-mnd/v2/Makefile b/tools/vendor/github.com/tommy-muehle/go-mnd/v2/Makefile
-new file mode 100644
-index 0000000000000000000000000000000000000000..a21c1dcac4d6ca9e2b802757e3f1a7421298ca1b
---- /dev/null
-+++ b/tools/vendor/github.com/tommy-muehle/go-mnd/v2/Makefile
-@@ -0,0 +1,32 @@
-+GIT_TAG?= $(shell git describe --abbrev=0)
-+
-+GO_VERSION = 1.16
-+BUILDFLAGS := '-w -s'
-+
-+IMAGE_REPO = "tommymuehle"
-+BIN = "go-mnd"
-+
-+clean:
-+	rm -rf build dist coverage.txt
-+
-+test:
-+	go test -race ./...
-+
-+test-coverage:
-+	go test -race -coverprofile=coverage.txt -covermode=atomic -coverpkg=./checks,./config
-+
-+build:
-+	go build -o build/$(BIN) cmd/mnd/main.go
-+
-+image:
-+	@echo "Building the Docker image..."
-+	docker build --rm -t $(IMAGE_REPO)/$(BIN):$(GIT_TAG) --build-arg GO_VERSION=$(GO_VERSION) .
-+	docker tag $(IMAGE_REPO)/$(BIN):$(GIT_TAG) $(IMAGE_REPO)/$(BIN):$(GIT_TAG)
-+	docker tag $(IMAGE_REPO)/$(BIN):$(GIT_TAG) $(IMAGE_REPO)/$(BIN):latest
-+
-+image-push: image
-+	@echo "Pushing the Docker image..."
-+	docker push $(IMAGE_REPO)/$(BIN):$(GIT_TAG)
-+	docker push $(IMAGE_REPO)/$(BIN):latest
-+
-+.PHONY: clean test test-coverage build image image-push
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/dhcpv6configurationfromndpra_string.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/dhcpv6configurationfromndpra_string.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..09ba133b1b77de19370d5b47b096c382e20d9b43
+index 00000000..09ba133b
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/dhcpv6configurationfromndpra_string.go
 @@ -0,0 +1,40 @@
@@ -6006,7 +5878,7 @@ index 0000000000000000000000000000000000000000..09ba133b1b77de19370d5b47b096c382
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/icmp.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/icmp.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..eb85f4505cf6afef5430c6bcfb270afd4b752ecf
+index 00000000..eb85f450
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/icmp.go
 @@ -0,0 +1,1230 @@
@@ -7242,7 +7114,7 @@ index 0000000000000000000000000000000000000000..eb85f4505cf6afef5430c6bcfb270afd
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..b4a38a5669ceab5fce447fc7df890b1bc82c7d17
+index 00000000..b4a38a56
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6.go
 @@ -0,0 +1,2918 @@
@@ -10166,7 +10038,7 @@ index 0000000000000000000000000000000000000000..b4a38a5669ceab5fce447fc7df890b1b
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6_state_autogen.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6_state_autogen.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..2f92edd622865ccd25a117393d39ebf3395b1fb4
+index 00000000..2f92edd6
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6_state_autogen.go
 @@ -0,0 +1,1046 @@
@@ -11218,7 +11090,7 @@ index 0000000000000000000000000000000000000000..2f92edd622865ccd25a117393d39ebf3
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/mld.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/mld.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..56dba24b75dc015ddc455b2f64429c398baffbf0
+index 00000000..56dba24b
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/mld.go
 @@ -0,0 +1,478 @@
@@ -11702,7 +11574,7 @@ index 0000000000000000000000000000000000000000..56dba24b75dc015ddc455b2f64429c39
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ndp.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ndp.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..5be647ed53be24e6a2d4275c042b7a4ab4866291
+index 00000000..5be647ed
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ndp.go
 @@ -0,0 +1,2033 @@
@@ -13741,7 +13613,7 @@ index 0000000000000000000000000000000000000000..5be647ed53be24e6a2d4275c042b7a4a
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/stats.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/stats.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..6c5d98e230bb834ad98f14bb61c8d78e5cac0186
+index 00000000..6c5d98e2
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/stats.go
 @@ -0,0 +1,145 @@
@@ -13891,7 +13763,7 @@ index 0000000000000000000000000000000000000000..6c5d98e230bb834ad98f14bb61c8d78e
 +
 +// LINT.ThenChange(../../tcpip.go:ICMPv6Stats)
 diff --git a/vendor/modules.txt b/vendor/modules.txt
-index ad2e3d33708b54b31e3aa8c5d7d703b5d1751f16..9ed48df7ed4421657c9f8fb8dc64c497ae99dbe6 100644
+index ad2e3d33..9ed48df7 100644
 --- a/vendor/modules.txt
 +++ b/vendor/modules.txt
 @@ -309,6 +309,7 @@ gvisor.dev/gvisor/pkg/tcpip/network/internal/fragmentation

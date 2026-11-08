@@ -32,6 +32,16 @@ tests are recorded in the plan:
   domain-only path, domain-only UDP, and domain denies overlapping a direct IP
   allow are rejected. Policy decisions, audit records, and flow tracking use
   the guest-visible destination evaluated before host NAT translation.
+  Candidate IPv6 support (`stack.ipv6Enabled`, guest ULA/RA, AAAA policy
+  lookups, IPv6 CIDR matching, TCP SNI binding to v6 addresses, and
+  `guest-ipv6:` loopback publish targets) and candidate QUIC v1/v2
+  classification (Initial parsing, SNI extraction, domain UDP policy, and
+  fail-closed handling of Retry, 0-RTT, coalesced packets and ECH) are present
+  in this patch but are not public capabilities: the gateway only renders
+  `ipv6Enabled` and `guest-ipv6:` behind its disabled experimental flag, and
+  the control plane still rejects UDP domain rules. Live VM evidence includes
+  ULA/RA assignment and a host `[::1]` publish probe, but the routed AAAA/SNI
+  allow/deny matrix, two-VM tests, and QUIC live handshakes remain open.
   Live VM evidence (2026-11-01): default deny, allowed domain fetch with a
   matching SNI, direct-IP connection without a matching name denied
   (`tls-name-denied`), non-TLS on a domain-only rule denied, DNS refusal
