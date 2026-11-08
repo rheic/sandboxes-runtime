@@ -33,12 +33,14 @@ tests are recorded in the plan:
   allow are rejected. Policy decisions, audit records, and flow tracking use
   the guest-visible destination evaluated before host NAT translation.
   Candidate IPv6 support (`stack.ipv6Enabled`, guest ULA/RA, AAAA policy
-  lookups, IPv6 CIDR matching, TCP SNI binding to v6 addresses, and
-  `guest-ipv6:` loopback publish targets) and candidate QUIC v1/v2
+  lookups, IPv6 CIDR matching, TCP SNI binding to v6 addresses, explicit
+  IPv6 host-services NAT entries, and `guest-ipv6:` loopback publish targets)
+  and candidate QUIC v1/v2
   classification (Initial parsing, SNI extraction, domain UDP policy, and
   fail-closed handling of Retry, 0-RTT, coalesced packets and ECH) are present
   in this patch but are not public capabilities: the gateway only renders
-  `ipv6Enabled` and `guest-ipv6:` behind its disabled experimental flag, and
+  `ipv6Enabled`, the IPv6 host-services NAT entry, and `guest-ipv6:` behind
+  its disabled experimental flag, and
   the control plane still rejects UDP domain rules. Live VM evidence includes
   ULA/RA assignment and a host `[::1]` publish probe, but the routed AAAA/SNI
   allow/deny matrix, two-VM tests, and QUIC live handshakes remain open.
