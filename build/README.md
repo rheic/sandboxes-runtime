@@ -41,9 +41,18 @@ tests are recorded in the plan:
   in this patch but are not public capabilities: the gateway only renders
   `ipv6Enabled`, the IPv6 host-services NAT entry, and `guest-ipv6:` behind
   its disabled experimental flag, and
-  the control plane still rejects UDP domain rules. Live VM evidence includes
-  ULA/RA assignment and a host `[::1]` publish probe, but the routed AAAA/SNI
-  allow/deny matrix, two-VM tests, and QUIC live handshakes remain open.
+  the control plane still rejects UDP domain rules. The IPv6 datapath enables
+  forwarding on the single guest NIC so NDP Neighbor Advertisements for the
+  advertised router carry the Router flag; otherwise Linux demotes `fe80::1`
+  when it resolves the router and deletes the RA default route until the next
+  advertisement. Router Advertisements include the Source Link-Layer Address
+  option, are sent every 10s with a 30s router lifetime, and answer Router
+  Solicitations immediately. The raw ICMPv6 listener binds to the NIC rather
+  than to `fe80::1` so solicitations sent to `ff02::2` are received. Live VM
+  evidence includes ULA/RA assignment, a host `[::1]` publish probe, and a
+  three-minute IPv6 host-services egress run without a static route; the routed
+  AAAA/SNI allow/deny matrix, two-VM tests, and QUIC live handshakes remain
+  open.
   Live VM evidence (2026-11-01): default deny, allowed domain fetch with a
   matching SNI, direct-IP connection without a matching name denied
   (`tls-name-denied`), non-TLS on a domain-only rule denied, DNS refusal
