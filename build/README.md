@@ -141,8 +141,12 @@ This recipe pins source identities but does not yet claim bit-for-bit
 reproducibility: the complete build image, compiler/linker and system package
 set are not digest-pinned, and the produced library hashes are not compared to
 an independently published expected digest. Tagged release builds still need
-CI provenance/signing and verification of the exact shared library loaded at
-runtime. The nerdbox v0.2.5 Docker recipe builds libkrun v1.19.0 and mutates
+CI provenance/signing and controlled runtime loader configuration. The local
+task recorded the exact loaded `libkrun.so` from its explicit `LIBKRUN_PATH`,
+but pinned nerdbox searches `PATH` before `LIBKRUN_PATH` and treats an empty
+PATH entry as the current directory. A writable earlier path can therefore
+shadow the verified prefix; a single controlled smoke does not establish a
+general loader guarantee. The nerdbox v0.2.5 Docker recipe builds libkrun v1.19.0 and mutates
 its `imago` Cargo dependency, so it does not validate this manifest's libkrun
 v1.19.6 selection.
 
