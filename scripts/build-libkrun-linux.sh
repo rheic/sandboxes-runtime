@@ -42,6 +42,10 @@ done
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/rheic-libkrun-linux.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT INT TERM
+# Rust embeds source paths in release binaries. Normalize only this isolated,
+# randomly named checkout so independent builds produce identical artifacts.
+RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix=$WORK=/usr/src"
+export RUSTFLAGS
 INFO_DIR=$LIBKRUN_PREFIX/share/rheic-runtime
 
 checkout_source() {

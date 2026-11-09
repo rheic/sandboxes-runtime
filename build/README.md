@@ -164,6 +164,15 @@ general loader guarantee. The nerdbox v0.2.5 Docker recipe builds libkrun v1.19.
 its `imago` Cargo dependency, so it does not validate this manifest's libkrun
 v1.19.6 selection.
 
+A clean-room check in Ubuntu 24.04.5 ARM64 with Rust 1.90.0 and GCC 13.3.0
+built two empty prefixes from the pinned commits and kernel archive. The
+recipe remaps its random temporary checkout to `/usr/src` in Rust debug paths;
+the libkrun, libkrunfw, kernel image, and generated build-info hashes matched
+byte-for-byte. This is same-environment repeatability evidence, not a pinned
+build-image claim or independent provenance. The prefix-specific pkg-config
+file intentionally embeds the caller's installation prefix and is not
+byte-identical across different prefixes.
+
 The project shim recipe also applies a small compatibility patch that treats
 `krun_get_shutdown_eventfd` as optional outside macOS. libkrun v1.19.6 only
 exports that symbol on macOS/aarch64, while the pinned nerdbox loader otherwise
