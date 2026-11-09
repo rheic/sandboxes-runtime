@@ -1,0 +1,20 @@
+--- a/internal/vminit/ctrnetworking/ctrnetworking.go
++++ b/internal/vminit/ctrnetworking/ctrnetworking.go
+@@ -63,7 +63,7 @@
+ 					log.G(ctx).WithError(err).Warn("Closing container netns")
+ 				}
+ 			}()
+-			nlhCtr, err := netlink.NewHandleAt(nshCtr)
++			nlhCtr, err := netlink.NewHandleAt(nshCtr, unix.NETLINK_ROUTE)
+ 			if err != nil {
+ 				return fmt.Errorf("creating netlink handle in container netns: %w", err)
+ 			}
+@@ -265,7 +265,7 @@
+ func linkByMAC(nlh *netlink.Handle, mac string) (netlink.Link, error) {
+ 	if nlh == nil {
+ 		var err error
+-		nlh, err = netlink.NewHandle()
++		nlh, err = netlink.NewHandle(unix.NETLINK_ROUTE)
+ 		if err != nil {
+ 			return nil, fmt.Errorf("creating netlink handle: %w", err)
+ 		}

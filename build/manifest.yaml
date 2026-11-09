@@ -10,6 +10,10 @@ components:
     version: "0.2.5"
     commit: 28c86e8e16c62a08079531ebe99e24a7bdad3d62
     source: https://github.com/containerd/nerdbox
+  nerdbox-rootfs-base-arm64:
+    version: "0.2.5"
+    source: pinned Linux ARM64 EROFS base generated from the nerdbox commit above
+    sha256: bb7b4ba4df5047d67d0af0ffc9c92b891d8553d4c78a30c14219d079dd003cc3
   libkrun:
     version: "1.19.6"
     commit: 227b2de6ed323fe180e02f871c5f325a90c13cc2
@@ -49,6 +53,10 @@ patches:
   nerdbox-ttrpc-close-once:
     file: patches/nerdbox-ttrpc-close-once.patch
     sha256: 4bcbb9dc9eea8c032d90cfbf5fd286ab7e21071872e9defa32abb766071da5c4
+    status: experimental
+  nerdbox-network-route-only:
+    file: patches/nerdbox-network-route-only.patch
+    sha256: 521a3370d53515be4f07404b67124e57a387fb62b6c97368d1053fc15ba3f569
     status: experimental
   gvproxy-egress-policy:
     file: patches/gvproxy-egress-policy-v2.patch
