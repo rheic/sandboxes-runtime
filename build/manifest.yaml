@@ -42,6 +42,10 @@ patches:
     file: patches/nerdbox-linux-shutdown-symbol.patch
     sha256: 787a9680616d1e1eedcc97899c87d3776ba97e89c63ca7f00ead4026069d70eb
     status: experimental
+  nerdbox-ttrpc-close-once:
+    file: patches/nerdbox-ttrpc-close-once.patch
+    sha256: 4bcbb9dc9eea8c032d90cfbf5fd286ab7e21071872e9defa32abb766071da5c4
+    status: experimental
   gvproxy-egress-policy:
     file: patches/gvproxy-egress-policy-v2.patch
     sha256: 2e1ffe65819230451b0c0ad89adbe1f33ec1d8d96606d91cc111f6d2120e0b48

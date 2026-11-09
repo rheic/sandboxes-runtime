@@ -68,6 +68,12 @@ tests are recorded in the plan:
   8 to 128 layers so multi-layer images stay on raw virtio EROFS disks instead
   of the GPT VMDK path that libkrun 1.19.6 rejects. Build the shim with
   `scripts/build-nerdbox-shim.sh`; the hypervisor entitlement is mandatory.
+- `patches/nerdbox-ttrpc-close-once.patch` — avoids closing the TTRPC
+  connection a second time after `ttrpc.Client.Close()` has already closed it;
+  keeps raw-connection cleanup when client creation failed and ignores an
+  already-closed socket. Synthetic connection-counting tests cover both paths.
+  This suppresses the redundant-close warning only; it does not validate
+  libkrun vsock proxy cleanup or reconnect behavior.
 - `patches/qemu-windows-private-pipe-v1.patch` — on Windows, uses the
   `RHEIC_PIPE_SDDL` supplied by the runtime to create QEMU's virtio-serial
   named pipe with a protected current-user + SYSTEM DACL and rejects remote
