@@ -134,10 +134,12 @@ reproducible build.
 
 The Linux source build recipe is `scripts/build-libkrun-linux.sh`. It checks
 the manifest-pinned libkrun/libkrunfw commits, the Linux kernel archive digest,
-Rust `1.90.0`, and GCC `13.3.0`, then writes the built library hashes into the
-prefix. Set `LIBKRUN_PREFIX` to an empty absolute directory; the script refuses
-to overwrite a non-empty prefix. Source checkouts are always cloned into
-temporary build trees and removed after the build.
+Rust `1.90.0`, and GCC `13.3.0`, then installs the libraries and the raw
+`nerdbox-kernel-arm64` image required by the pinned shim. Build metadata records
+the kernel image hash as well as library hashes, and the prefix verifier rejects
+missing or changed artifacts. Set `LIBKRUN_PREFIX` to an empty absolute
+directory; the script refuses to overwrite a non-empty prefix. Source checkouts
+are always cloned into temporary build trees and removed after the build.
 `scripts/verify-libkrun-linux-prefix.sh` detects
 post-build file drift against that prefix metadata. Since the metadata is
 stored beside the libraries and is not signed, this check is not an

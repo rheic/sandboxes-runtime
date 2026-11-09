@@ -161,6 +161,9 @@ func TestLinuxLibkrunBuildPinsManifestInputs(t *testing.T) {
 			t.Errorf("Linux build script is missing required build constraint %q", flag)
 		}
 	}
+	if !strings.Contains(scriptText, "nerdbox-kernel-arm64") || !strings.Contains(scriptText, "kernel_image_sha256=") {
+		t.Error("Linux build script does not install and hash the kernel image required by nerdbox")
+	}
 	verifier, err := os.ReadFile(filepath.Join(root, "scripts", "verify-libkrun-linux-prefix.sh"))
 	if err != nil {
 		t.Fatal(err)
@@ -169,6 +172,9 @@ func TestLinuxLibkrunBuildPinsManifestInputs(t *testing.T) {
 		if !strings.Contains(string(verifier), commit) {
 			t.Errorf("prefix verifier does not check source commit %q", commit)
 		}
+	}
+	if !strings.Contains(string(verifier), "nerdbox-kernel-arm64") || !strings.Contains(string(verifier), "verify_digest kernel_image") {
+		t.Error("Linux prefix verifier does not validate the installed nerdbox kernel image")
 	}
 }
 
@@ -194,9 +200,11 @@ func TestVerifyLinuxLibkrunPrefixRejectsArtifactAndMetadataDrift(t *testing.T) {
 	prefix := t.TempDir()
 	libkrun := filepath.Join(prefix, "lib64", "libkrun.so.1.19.6")
 	libkrunfw := filepath.Join(prefix, "lib", "aarch64-linux-gnu", "libkrunfw.so.5.6.2")
+	kernelImage := filepath.Join(prefix, "nerdbox-kernel-arm64")
 	libkrunBytes := []byte("synthetic libkrun artifact")
 	libkrunfwBytes := []byte("synthetic libkrunfw artifact")
-	for path, data := range map[string][]byte{libkrun: libkrunBytes, libkrunfw: libkrunfwBytes} {
+	kernelBytes := []byte("synthetic kernel image")
+	for path, data := range map[string][]byte{libkrun: libkrunBytes, libkrunfw: libkrunfwBytes, kernelImage: kernelBytes} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -217,6 +225,7 @@ func TestVerifyLinuxLibkrunPrefixRejectsArtifactAndMetadataDrift(t *testing.T) {
 		"libkrunfw_sha256=" + digest(libkrunfwBytes),
 		"kernel_version=linux-6.12.109",
 		"kernel_sha256=5484e552a334e15019f4aeba89e5b58f04651cf2f4e24e04de9f152f1c38e3fa",
+		"kernel_image_sha256=" + digest(kernelBytes),
 		"rustc_version=1.90.0",
 		"gcc_version=13.3.0",
 	}, "\n") + "\n"
@@ -245,6 +254,15 @@ func TestVerifyLinuxLibkrunPrefixRejectsArtifactAndMetadataDrift(t *testing.T) {
 		t.Fatal("prefix verifier accepted a replaced library")
 	}
 	if err := os.WriteFile(libkrun, libkrunBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(kernelImage, []byte("tampered kernel image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := verify(); err == nil {
+		t.Fatal("prefix verifier accepted a replaced kernel image")
+	}
+	if err := os.WriteFile(kernelImage, kernelBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(infoPath, []byte(info+"libkrun_version=1.19.7\n"), 0o600); err != nil {

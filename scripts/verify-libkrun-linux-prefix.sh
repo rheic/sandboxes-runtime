@@ -30,6 +30,18 @@ field() {
   awk -F= -v key="$1" '$1 == key { print substr($0, index($0, "=") + 1); count++ } END { if (count != 1) exit 1 }' "$INFO"
 }
 
+verify_digest() {
+  name=$1
+  path=$2
+  expected=$(field "${name}_sha256") || { echo "missing $name digest in build metadata" >&2; exit 1; }
+  case "$expected" in
+    *[!0-9a-f]*|'') echo "invalid $name digest in build metadata" >&2; exit 1 ;;
+  esac
+  [ "${#expected}" -eq 64 ] || { echo "invalid $name digest length" >&2; exit 1; }
+  actual=$(sha256sum "$path" | awk '{print $1}')
+  [ "$actual" = "$expected" ] || { echo "$name digest does not match build metadata" >&2; exit 1; }
+}
+
 verify_library() {
   name=$1
   path=$2
@@ -49,3 +61,6 @@ if [ -f "$PREFIX/lib/aarch64-linux-gnu/libkrunfw.so.5.6.2" ]; then
 else
   verify_library libkrunfw "$PREFIX/lib64/libkrunfw.so.5.6.2"
 fi
+KERNEL_IMAGE=$PREFIX/nerdbox-kernel-arm64
+test -s "$KERNEL_IMAGE" || { echo "required pinned kernel Image is missing: $KERNEL_IMAGE" >&2; exit 1; }
+verify_digest kernel_image "$KERNEL_IMAGE"

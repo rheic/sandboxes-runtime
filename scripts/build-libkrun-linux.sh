@@ -73,6 +73,9 @@ printf '%s  %s\n' "$KERNEL_SHA256" "$KERNEL_TARBALL" | sha256sum --check --statu
 }
 (cd "$LIBKRUNFW_SRC" && make -j "$JOBS" ARCH=arm64 all)
 (cd "$LIBKRUNFW_SRC" && make ARCH=arm64 PREFIX="$LIBKRUN_PREFIX" install)
+KERNEL_IMAGE=$LIBKRUNFW_SRC/$KERNEL_VERSION/arch/arm64/boot/Image
+test -s "$KERNEL_IMAGE" || { echo "built Linux kernel Image is missing" >&2; exit 1; }
+install -m 0644 "$KERNEL_IMAGE" "$LIBKRUN_PREFIX/nerdbox-kernel-arm64"
 
 LIBKRUN_SO=$LIBKRUN_PREFIX/lib64/libkrun.so.1.19.6
 if [ -f "$LIBKRUN_PREFIX/lib/aarch64-linux-gnu/libkrunfw.so.5.6.2" ]; then
@@ -93,6 +96,7 @@ INFO_TMP=$INFO_DIR/libkrun-linux-arm64-build-info.tmp
   printf 'libkrunfw_sha256=%s\n' "$(sha256sum "$LIBKRUNFW_SO" | awk '{print $1}')"
   printf 'kernel_version=%s\n' "$KERNEL_VERSION"
   printf 'kernel_sha256=%s\n' "$KERNEL_SHA256"
+  printf 'kernel_image_sha256=%s\n' "$(sha256sum "$LIBKRUN_PREFIX/nerdbox-kernel-arm64" | awk '{print $1}')"
   printf 'rustc_version=%s\n' "$RUST_VERSION"
   printf 'gcc_version=%s\n' "$GCC_VERSION"
 } > "$INFO_TMP"
