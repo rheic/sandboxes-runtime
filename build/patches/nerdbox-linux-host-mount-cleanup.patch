@@ -1,0 +1,183 @@
+diff --git a/internal/shim/task/mount_cleanup_linux_test.go b/internal/shim/task/mount_cleanup_linux_test.go
+new file mode 100644
+index 0000000..039f5e7
+--- /dev/null
++++ b/internal/shim/task/mount_cleanup_linux_test.go
+@@ -0,0 +1,50 @@
++//go:build linux
++
++package task
++
++import (
++	"errors"
++	"path/filepath"
++	"reflect"
++	"testing"
++)
++
++func TestUnmountHostMountPathsDeduplicatesBundleTargets(t *testing.T) {
++	base := t.TempDir()
++	mounts := filepath.Join(base, "mounts")
++	rootfs := filepath.Join(base, "rootfs")
++	var got []string
++	err := unmountHostMountPathsWith([]string{mounts, rootfs, mounts}, func(path string) error {
++		got = append(got, path)
++		return nil
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if want := []string{mounts, rootfs}; !reflect.DeepEqual(got, want) {
++		t.Fatalf("unmounted paths = %v, want %v", got, want)
++	}
++}
++
++func TestUnmountHostMountPathsRejectsUntrustedTargets(t *testing.T) {
++	called := false
++	err := unmountHostMountPathsWith([]string{"relative/mounts", filepath.Join(t.TempDir(), "outside")}, func(string) error {
++		called = true
++		return nil
++	})
++	if err == nil {
++		t.Fatal("expected invalid mount paths to be rejected")
++	}
++	if called {
++		t.Fatal("unmount callback ran for an invalid path")
++	}
++}
++
++func TestUnmountHostMountPathsReturnsUnmountFailure(t *testing.T) {
++	wantErr := errors.New("unmount failed")
++	path := filepath.Join(t.TempDir(), "mounts")
++	err := unmountHostMountPathsWith([]string{path}, func(string) error { return wantErr })
++	if !errors.Is(err, wantErr) {
++		t.Fatalf("unmount error = %v, want wrapped %v", err, wantErr)
++	}
++}
+diff --git a/internal/shim/task/mount_linux.go b/internal/shim/task/mount_linux.go
+index 473c06d..3f200ec 100644
+--- a/internal/shim/task/mount_linux.go
++++ b/internal/shim/task/mount_linux.go
+@@ -18,7 +18,9 @@ package task
+ 
+ import (
+ 	"context"
++	"errors"
+ 	"fmt"
++	"path/filepath"
+ 
+ 	"github.com/containerd/containerd/api/types"
+ 	"github.com/containerd/containerd/v2/core/mount"
+@@ -28,6 +30,40 @@ import (
+ 	"github.com/containerd/nerdbox/internal/shim/sandbox"
+ )
+ 
++func unmountHostMountPaths(paths []string) error {
++	return unmountHostMountPathsWith(paths, func(path string) error {
++		return mount.UnmountRecursive(path, 0)
++	})
++}
++
++func unmountHostMountPathsWith(paths []string, unmount func(string) error) error {
++	seen := make(map[string]struct{}, len(paths))
++	var errs []error
++	for _, path := range paths {
++		if path == "" {
++			continue
++		}
++		cleanPath := filepath.Clean(path)
++		if !filepath.IsAbs(cleanPath) {
++			errs = append(errs, fmt.Errorf("refusing non-absolute mount path %q", path))
++			continue
++		}
++		base := filepath.Base(cleanPath)
++		if base != "mounts" && base != "rootfs" {
++			errs = append(errs, fmt.Errorf("refusing unexpected mount path %q", path))
++			continue
++		}
++		if _, ok := seen[cleanPath]; ok {
++			continue
++		}
++		seen[cleanPath] = struct{}{}
++		if err := unmount(cleanPath); err != nil {
++			errs = append(errs, fmt.Errorf("unmount %q: %w", cleanPath, err))
++		}
++	}
++	return errors.Join(errs...)
++}
++
+ func setupMounts(ctx context.Context, id string, m []*types.Mount, rootfs, lmounts string, da *diskAllocator, bundleDir string) ([]*types.Mount, []sandbox.Opt, error) {
+ 	// Handle mounts
+ 	var sbOpts []sandbox.Opt
+diff --git a/internal/shim/task/mount_other.go b/internal/shim/task/mount_other.go
+index 372fecc..95bf808 100644
+--- a/internal/shim/task/mount_other.go
++++ b/internal/shim/task/mount_other.go
+@@ -26,6 +26,8 @@ import (
+ 	"github.com/containerd/nerdbox/internal/shim/sandbox"
+ )
+ 
++func unmountHostMountPaths(_ []string) error { return nil }
++
+ func setupMounts(ctx context.Context, id string, ms []*types.Mount, _, _ string, da *diskAllocator, bundleDir string) ([]*types.Mount, []sandbox.Opt, error) {
+ 	return transformMounts(ctx, id, ms, da, bundleDir)
+ }
+diff --git a/internal/shim/task/service.go b/internal/shim/task/service.go
+index ab9990a..c02add8 100644
+--- a/internal/shim/task/service.go
++++ b/internal/shim/task/service.go
+@@ -210,6 +210,9 @@ type service struct {
+ 	events  chan any
+ 
+ 	containers map[string]*container
++	// hostMountPaths contains bundle paths mounted by the shim while preparing
++	// a Linux guest rootfs. They must remain mounted until the VM has stopped.
++	hostMountPaths []string
+ 
+ 	debug                bool
+ 	initiateShutdown     func()
+@@ -232,6 +235,8 @@ func (s *service) shutdown(ctx context.Context) error {
+ 	s.mu.Lock()
+ 	containers := s.containers
+ 	s.containers = make(map[string]*container)
++	hostMountPaths := s.hostMountPaths
++	s.hostMountPaths = nil
+ 	s.mu.Unlock()
+ 
+ 	var errs []error
+@@ -241,6 +246,7 @@ func (s *service) shutdown(ctx context.Context) error {
+ 		}
+ 	}
+ 
++	vmStopped := s.sb == nil
+ 	if s.sb != nil {
+ 		// Unmount all block volumes inside the guest before stopping the VM,
+ 		// to flush ext4 journals and dirty pages to the virtio-blk devices.
+@@ -255,7 +261,17 @@ func (s *service) shutdown(ctx context.Context) error {
+ 
+ 		if err := s.sb.Stop(ctx); err != nil {
+ 			errs = append(errs, fmt.Errorf("sandbox shutdown: %w", err))
++			vmStopped = errdefs.IsFailedPrecondition(err)
++		} else {
++			vmStopped = true
++		}
++	}
++	if vmStopped {
++		if err := unmountHostMountPaths(hostMountPaths); err != nil {
++			errs = append(errs, fmt.Errorf("unmount host rootfs mounts: %w", err))
+ 		}
++	} else if len(hostMountPaths) != 0 {
++		log.G(ctx).WithField("mount_paths", hostMountPaths).Warn("keeping host rootfs mounts because sandbox shutdown failed")
+ 	}
+ 
+ 	// Remove the rootfs directory on Windows so containerd's bundle cleanup
+@@ -367,6 +383,9 @@ func (s *service) Create(ctx context.Context, r *taskAPI.CreateTaskRequest) (_ *
+ 	if err != nil {
+ 		return nil, errgrpc.ToGRPC(err)
+ 	}
++	s.mu.Lock()
++	s.hostMountPaths = append(s.hostMountPaths, filepath.Join(r.Bundle, "mounts"), b.Rootfs)
++	s.mu.Unlock()
+ 
+ 	// Process ext4 volume mounts in the OCI spec after rootfs disks have been
+ 	// allocated, so that rootfs disks always precede volume disks.

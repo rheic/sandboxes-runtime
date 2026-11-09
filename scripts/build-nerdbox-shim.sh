@@ -36,6 +36,7 @@ chmod -R u+w "$WORK/src"
 "$ROOT/scripts/verify-pinned-source.sh" "$WORK/src" 28c86e8e16c62a08079531ebe99e24a7bdad3d62
 cd "$WORK/src"
 git apply "$ROOT/build/patches/nerdbox-gpt-threshold.patch"
+git apply "$ROOT/build/patches/nerdbox-linux-host-mount-cleanup.patch"
 git apply "$ROOT/build/patches/nerdbox-proxy-channel.patch"
 git apply "$ROOT/build/patches/nerdbox-linux-shutdown-symbol.patch"
 git apply "$ROOT/build/patches/nerdbox-ttrpc-close-once.patch"

@@ -5,7 +5,7 @@
  // lets the shim handle deep stacks of independent erofs mounts without
  // coordinating layer offsets in the snapshotter.
 -const gptLayerThreshold = 8
-+const gptLayerThreshold = 128
++const gptLayerThreshold = 126
  
  // diskAllocator assigns sequential virtio disk letters starting after any
  // disks reserved by the VM implementation (see vm.Manager.ReservedDisks).
