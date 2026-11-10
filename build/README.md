@@ -73,9 +73,19 @@ tests are recorded in the plan:
   `scripts/build-nerdbox-shim.sh`; the hypervisor entitlement is mandatory.
 - `patches/nerdbox-linux-host-mount-cleanup.patch` — tracks rootfs bundle paths
   prepared on the host and unmounts them only after the VM has stopped, so
-  containerd can remove read-only EROFS bundle trees. If VM shutdown fails,
-  mounts are retained and cleanup reports the failure. Tests cover duplicate,
-  invalid, and failed unmount requests.
+  containerd can remove read-only EROFS bundle trees. If VM shutdown or
+  unmount fails, the service retains exact path ownership for a retry; paths
+  added concurrently are preserved. Tests cover duplicate, invalid, failed
+  unmount, and ownership-retention cases.
+- `patches/nerdbox-network-route-only.patch` — asks the Linux guest networking
+  helper for only `NETLINK_ROUTE`, the family it uses for veth, address, and
+  route operations. This avoids opening unused XFRM and netfilter families
+  while connecting a container network namespace. An owned Linux ARM64 P-04
+  service run completed Create/Exec/Stop/Start/revoke/Delete with this patched
+  vminitd and a synthetic keyring. The run used a root daemon and rootful
+  containerd inside an isolated Lima VM; it does not establish ordinary-user,
+  rootless, native Linux-host or full Docker parity. The patch remains
+  experimental until independent review and product privilege integration.
 - `patches/nerdbox-ttrpc-close-once.patch` — avoids closing the TTRPC
   connection a second time after `ttrpc.Client.Close()` has already closed it;
   keeps raw-connection cleanup when client creation failed and ignores an
