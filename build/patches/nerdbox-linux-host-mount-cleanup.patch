@@ -142,7 +142,7 @@ index 473c06d..5dfe7f2 100644
  	// Handle mounts
  	var sbOpts []sandbox.Opt
 diff --git a/internal/shim/task/mount_other.go b/internal/shim/task/mount_other.go
-index 372fecc..95bf808 100644
+index 372fecc..8d92f1a 100644
 --- a/internal/shim/task/mount_other.go
 +++ b/internal/shim/task/mount_other.go
 @@ -26,6 +26,20 @@ import (
@@ -228,3 +228,204 @@ index 1946605..766f8fb 100644
  
  	// Process ext4 volume mounts in the OCI spec after rootfs disks have been
  	// allocated, so that rootfs disks always precede volume disks.
+diff --git a/pkg/shim/manager/manager_unix.go b/pkg/shim/manager/manager_unix.go
+index 81b3301..2df3c3c 100644
+--- a/pkg/shim/manager/manager_unix.go
++++ b/pkg/shim/manager/manager_unix.go
+@@ -297,6 +297,9 @@ func (manager) Stop(ctx context.Context, id string) (shim.StopStatus, error) {
+ 	if err != nil {
+ 		return shim.StopStatus{}, err
+ 	}
++	if err := cleanupDeadShimBundleMounts(ctx); err != nil {
++		return shim.StopStatus{}, fmt.Errorf("cleanup bundle mounts after shim exit: %w", err)
++	}
+ 	return shim.StopStatus{
+ 		ExitedAt:   time.Now(),
+ 		ExitStatus: 128 + int(unix.SIGKILL),
+diff --git a/pkg/shim/manager/mount_cleanup.go b/pkg/shim/manager/mount_cleanup.go
+new file mode 100644
+index 0000000..2719810
+--- /dev/null
++++ b/pkg/shim/manager/mount_cleanup.go
+@@ -0,0 +1,61 @@
++package manager
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"os"
++	"path/filepath"
++
++	"github.com/containerd/containerd/v2/pkg/shim"
++)
++
++// cleanupBundleMountsWith removes mounts only below the two fixed mount roots
++// owned by the task bundle. It is called from the containerd delete action,
++// after Stop has waited for the shim process lock to be released.
++func cleanupBundleMountsWith(ctx context.Context, unmount func(string) error) error {
++	opts, ok := ctx.Value(shim.OptsKey{}).(shim.Opts)
++	if !ok || opts.BundlePath == "" {
++		return errors.New("shim bundle path is unavailable")
++	}
++	bundle := filepath.Clean(opts.BundlePath)
++	if !filepath.IsAbs(bundle) || bundle == string(filepath.Separator) {
++		return fmt.Errorf("refusing invalid shim bundle path %q", opts.BundlePath)
++	}
++	info, err := os.Lstat(bundle)
++	if err != nil {
++		return fmt.Errorf("inspect shim bundle: %w", err)
++	}
++	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
++		return fmt.Errorf("refusing non-directory or symlink shim bundle %q", bundle)
++	}
++
++	targets, err := bundleMountTargets(bundle)
++	if err != nil {
++		return err
++	}
++	for _, target := range targets {
++		info, err := os.Lstat(target)
++		if errors.Is(err, os.ErrNotExist) {
++			continue
++		}
++		if err != nil {
++			return fmt.Errorf("inspect bundle mount root %q: %w", target, err)
++		}
++		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
++			return fmt.Errorf("refusing non-directory or symlink bundle mount root %q", target)
++		}
++		if err := unmount(target); err != nil {
++			return fmt.Errorf("unmount bundle path %q: %w", target, err)
++		}
++	}
++	return nil
++}
++
++func bundleMountTargets(bundle string) ([]string, error) {
++	clean := filepath.Clean(bundle)
++	if !filepath.IsAbs(clean) || clean == string(filepath.Separator) {
++		return nil, fmt.Errorf("invalid bundle path %q", bundle)
++	}
++	return []string{filepath.Join(clean, "mounts"), filepath.Join(clean, "rootfs")}, nil
++}
+diff --git a/pkg/shim/manager/mount_cleanup_test.go b/pkg/shim/manager/mount_cleanup_test.go
+new file mode 100644
+index 0000000..a75bdad
+--- /dev/null
++++ b/pkg/shim/manager/mount_cleanup_test.go
+@@ -0,0 +1,83 @@
++package manager
++
++import (
++	"context"
++	"os"
++	"path/filepath"
++	"reflect"
++	"testing"
++
++	"github.com/containerd/containerd/v2/pkg/shim"
++)
++
++func TestBundleMountTargetsAreFixedChildren(t *testing.T) {
++	got, err := bundleMountTargets("/var/lib/containerd/io.containerd.runtime.v2.task/default/id")
++	if err != nil {
++		t.Fatal(err)
++	}
++	want := []string{
++		"/var/lib/containerd/io.containerd.runtime.v2.task/default/id/mounts",
++		"/var/lib/containerd/io.containerd.runtime.v2.task/default/id/rootfs",
++	}
++	if !reflect.DeepEqual(got, want) {
++		t.Fatalf("targets = %v, want %v", got, want)
++	}
++	for _, invalid := range []string{"", "relative/bundle", string(filepath.Separator)} {
++		if _, err := bundleMountTargets(invalid); err == nil {
++			t.Errorf("bundleMountTargets(%q) succeeded", invalid)
++		}
++	}
++}
++
++func TestCleanupBundleMountsUsesOnlyExistingFixedTargets(t *testing.T) {
++	bundle := t.TempDir()
++	for _, name := range []string{"mounts", "rootfs", "unrelated"} {
++		if err := os.Mkdir(filepath.Join(bundle, name), 0o700); err != nil {
++			t.Fatal(err)
++		}
++	}
++	ctx := context.WithValue(context.Background(), shim.OptsKey{}, shim.Opts{BundlePath: bundle})
++	var got []string
++	err := cleanupBundleMountsWith(ctx, func(path string) error {
++		got = append(got, path)
++		return nil
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	want := []string{filepath.Join(bundle, "mounts"), filepath.Join(bundle, "rootfs")}
++	if !reflect.DeepEqual(got, want) {
++		t.Fatalf("unmounted paths = %v, want %v", got, want)
++	}
++}
++
++func TestCleanupBundleMountsRejectsSymlinkTarget(t *testing.T) {
++	bundle := t.TempDir()
++	outside := t.TempDir()
++	if err := os.Symlink(outside, filepath.Join(bundle, "mounts")); err != nil {
++		t.Fatal(err)
++	}
++	ctx := context.WithValue(context.Background(), shim.OptsKey{}, shim.Opts{BundlePath: bundle})
++	called := false
++	if err := cleanupBundleMountsWith(ctx, func(string) error { called = true; return nil }); err == nil {
++		t.Fatal("expected symlink target refusal")
++	}
++	if called {
++		t.Fatal("unmount callback ran for symlink target")
++	}
++}
++
++func TestCleanupBundleMountsRequiresTrustedBundleContext(t *testing.T) {
++	if err := cleanupBundleMountsWith(context.Background(), func(string) error { return nil }); err == nil {
++		t.Fatal("expected missing bundle context error")
++	}
++	bundle := t.TempDir()
++	link := bundle + "-link"
++	if err := os.Symlink(bundle, link); err != nil {
++		t.Fatal(err)
++	}
++	ctx := context.WithValue(context.Background(), shim.OptsKey{}, shim.Opts{BundlePath: link})
++	if err := cleanupBundleMountsWith(ctx, func(string) error { return nil }); err == nil {
++		t.Fatal("expected symlink bundle refusal")
++	}
++}
+diff --git a/pkg/shim/manager/mount_linux.go b/pkg/shim/manager/mount_linux.go
+index 18e685f..da9f1ef 100644
+--- a/pkg/shim/manager/mount_linux.go
++++ b/pkg/shim/manager/mount_linux.go
+@@ -23,8 +23,16 @@ import (
+ 	"path/filepath"
+ 	"strings"
+ 	"syscall"
++
++	"github.com/containerd/containerd/v2/core/mount"
+ )
+ 
++func cleanupDeadShimBundleMounts(ctx context.Context) error {
++	return cleanupBundleMountsWith(ctx, func(path string) error {
++		return mount.UnmountRecursive(path, 0)
++	})
++}
++
+ // cloneMntNs configures the child command to start in a new mount
+ // namespace, and — only when the calling process is not already real
+ // root — a new user namespace as well. The user namespace provides mount
+diff --git a/pkg/shim/manager/mount_other.go b/pkg/shim/manager/mount_other.go
+index 30eccfa..03ec2f1 100644
+--- a/pkg/shim/manager/mount_other.go
++++ b/pkg/shim/manager/mount_other.go
+@@ -24,3 +24,5 @@ import (
+ )
+ 
+ func cloneMntNs(_ context.Context, _ *exec.Cmd) bool { return false }
++
++func cleanupDeadShimBundleMounts(_ context.Context) error { return nil }

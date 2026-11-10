@@ -7,7 +7,8 @@
 - Add pinned Linux ARM64 libkrun and nerdbox shim build recipes, runtime
   manifest checks, and a deterministic EROFS guest-rootfs recipe.
 - Restrict the experimental Linux guest network helper to `NETLINK_ROUTE` and
-  clean host rootfs mounts after successful VM shutdown.
+  clean host rootfs mounts after successful VM shutdown and after abrupt shim
+  death through containerd's bundle-scoped delete action.
 - Restrict VM runtime asset lookup to explicit `LIBKRUN_PATH` or fixed system
   directories; the shim builder publishes output atomically without following
   symlink destinations.
@@ -18,8 +19,10 @@
   privileged rootful workflow in a macOS-hosted Ubuntu ARM64 VM; native Linux,
   ordinary-user and rootless acceptance remain open. Windows runtime is out of
   scope.
-- Runtime build-image pinning, signed provenance, abrupt-shim crash recovery,
-  independent security review and full Docker Sandboxes parity remain open.
+- Runtime build-image pinning, signed provenance, independent security review
+  and full Docker Sandboxes parity remain open. Abrupt-shim cleanup has been
+  verified for an owned EROFS bundle in a privileged rootful Linux ARM64 VM;
+  native Linux and ordinary-user/rootless acceptance remain open.
 - Runtime assets are not digest-verified at load time; configured and default
   host asset directories must remain protected from untrusted writes.
 

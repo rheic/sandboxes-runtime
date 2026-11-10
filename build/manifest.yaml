@@ -40,7 +40,7 @@ patches:
     status: experimental
   nerdbox-linux-host-mount-cleanup:
     file: patches/nerdbox-linux-host-mount-cleanup.patch
-    sha256: 3dc42778b5ed614e456acc466144a826046bc0bb669ec94704d517b1b57d2ec6
+    sha256: 33f33178bb4a0b52a6013fba9c2beee3a56f6aa5ffab6162e74b87862ba80b7b
     status: experimental
   nerdbox-proxy-channel:
     file: patches/nerdbox-proxy-channel.patch

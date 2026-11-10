@@ -81,7 +81,11 @@ tests are recorded in the plan:
   containerd can remove read-only EROFS bundle trees. If VM shutdown or
   unmount fails, the service retains exact path ownership for a retry; paths
   added concurrently are preserved. Tests cover duplicate, invalid, failed
-  unmount, and ownership-retention cases.
+  unmount, and ownership-retention cases. Containerd's delete action also
+  waits for the dead shim's PID lock and then unmounts only the fixed `mounts`
+  and `rootfs` subtrees of that task's validated bundle, recovering those
+  mounts after abrupt shim death. Same-UID bundle-path races remain inside the
+  host user's trust boundary.
 - `patches/nerdbox-network-route-only.patch` — asks the Linux guest networking
   helper for only `NETLINK_ROUTE`, the family it uses for veth, address, and
   route operations. This avoids opening unused XFRM and netfilter families
