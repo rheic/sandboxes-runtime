@@ -97,6 +97,14 @@ tests are recorded in the plan:
   already-closed socket. Synthetic connection-counting tests cover both paths.
   This suppresses the redundant-close warning only; it does not validate
   libkrun vsock proxy cleanup or reconnect behavior.
+- `patches/nerdbox-runtime-asset-search.patch` — treats a non-empty
+  `LIBKRUN_PATH` as the complete runtime asset directory list and ignores
+  empty/relative entries. Without it, only fixed system directories are
+  searched; `PATH` is never used for native libraries, kernel images, or guest
+  rootfs assets. Explicit directories and system locations remain trusted host
+  inputs and must not be writable by untrusted workloads. The shim does not
+  verify per-file digests at load time; prefix verification is a build-time
+  check, not runtime provenance.
 - `patches/qemu-windows-private-pipe-v1.patch` — on Windows, uses the
   `RHEIC_PIPE_SDDL` supplied by the runtime to create QEMU's virtio-serial
   named pipe with a protected current-user + SYSTEM DACL and rejects remote
@@ -190,11 +198,13 @@ reproducibility: the complete build image, compiler/linker and system package
 set are not digest-pinned, and the produced library hashes are not compared to
 an independently published expected digest. Tagged release builds still need
 CI provenance/signing and controlled runtime loader configuration. The local
-task recorded the exact loaded `libkrun.so` from its explicit `LIBKRUN_PATH`,
-but pinned nerdbox searches `PATH` before `LIBKRUN_PATH` and treats an empty
-PATH entry as the current directory. A writable earlier path can therefore
-shadow the verified prefix; a single controlled smoke does not establish a
-general loader guarantee. The nerdbox v0.2.5 Docker recipe builds libkrun v1.19.0 and mutates
+task recorded the exact loaded `libkrun.so` from its explicit `LIBKRUN_PATH`.
+The candidate asset-search patch makes that variable a complete search list,
+filters empty/relative entries, and removes `PATH` fallback; absent an explicit
+list, only fixed system directories are searched. This prevents a writable
+`PATH` directory or current-directory entry from shadowing the verified prefix.
+It is not a runtime digest/signature check: the host must protect the explicit
+bundle and default directories from untrusted writes. The nerdbox v0.2.5 Docker recipe builds libkrun v1.19.0 and mutates
 its `imago` Cargo dependency, so it does not validate this manifest's libkrun
 v1.19.6 selection.
 

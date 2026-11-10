@@ -58,6 +58,7 @@ git apply "$ROOT/build/patches/nerdbox-gpt-threshold.patch"
 git apply "$ROOT/build/patches/nerdbox-linux-host-mount-cleanup.patch"
 git apply "$ROOT/build/patches/nerdbox-proxy-channel.patch"
 git apply "$ROOT/build/patches/nerdbox-linux-shutdown-symbol.patch"
+git apply "$ROOT/build/patches/nerdbox-runtime-asset-search.patch"
 git apply "$ROOT/build/patches/nerdbox-ttrpc-close-once.patch"
 CGO_ENABLED=1 \
 CGO_CFLAGS="-I$LIBKRUN_PREFIX/include" \

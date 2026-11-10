@@ -50,6 +50,10 @@ patches:
     file: patches/nerdbox-linux-shutdown-symbol.patch
     sha256: 787a9680616d1e1eedcc97899c87d3776ba97e89c63ca7f00ead4026069d70eb
     status: experimental
+  nerdbox-runtime-asset-search:
+    file: patches/nerdbox-runtime-asset-search.patch
+    sha256: 1b02d5464837947949ccae24a62e9c5c625e5f1868650dc3f20778efb83ee79f
+    status: experimental
   nerdbox-ttrpc-close-once:
     file: patches/nerdbox-ttrpc-close-once.patch
     sha256: 4bcbb9dc9eea8c032d90cfbf5fd286ab7e21071872e9defa32abb766071da5c4
