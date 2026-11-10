@@ -1,8 +1,8 @@
 #!/bin/sh
-# Build the nerdbox shim with raw-virtio multi-layer support. The upstream
-# gptLayerThreshold=8 path produces a GPT VMDK that libkrun 1.19.6 rejects;
-# the patch keeps up to 128 plain EROFS layers on raw virtio disks. The proxy
-# channel patch adds a guest-dialed vsock port bridged to a host unix socket.
+# Build the nerdbox shim with Linux raw-virtio EROFS support. The pinned Linux
+# path allows at most 25 container block disks plus the reserved rootfs disk;
+# larger stacks fail before the unsupported GPT VMDK path. The proxy channel
+# patch adds a guest-dialed vsock port bridged to a host unix socket.
 set -eu
 : "${NERDBOX_SRC:?set NERDBOX_SRC to an unpacked nerdbox v0.2.5 tree}"
 : "${OUT:?set OUT to the shim output path}"
