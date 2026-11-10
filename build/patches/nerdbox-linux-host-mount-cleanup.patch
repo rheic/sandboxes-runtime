@@ -1,9 +1,9 @@
 diff --git a/internal/shim/task/mount_cleanup_linux_test.go b/internal/shim/task/mount_cleanup_linux_test.go
 new file mode 100644
-index 0000000..039f5e7
+index 0000000..be8d1a6
 --- /dev/null
 +++ b/internal/shim/task/mount_cleanup_linux_test.go
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,68 @@
 +//go:build linux
 +
 +package task
@@ -54,8 +54,26 @@ index 0000000..039f5e7
 +		t.Fatalf("unmount error = %v, want wrapped %v", err, wantErr)
 +	}
 +}
++
++func TestRemainingHostMountPathsPreservesOwnershipUntilCleanupSucceeds(t *testing.T) {
++	first := filepath.Join(t.TempDir(), "mounts")
++	second := filepath.Join(t.TempDir(), "rootfs")
++	concurrent := filepath.Join(t.TempDir(), "mounts")
++	current := []string{first, second, concurrent}
++
++	got := remainingHostMountPaths(current, []string{first, second})
++	if want := []string{concurrent}; !reflect.DeepEqual(got, want) {
++		t.Fatalf("remaining paths = %v, want concurrent ownership %v", got, want)
++	}
++	if got := remainingHostMountPaths(current, []string{first, "unexpected"}); !reflect.DeepEqual(got, current) {
++		t.Fatalf("mismatched cleanup cleared ownership: got %v, want %v", got, current)
++	}
++	if got := remainingHostMountPaths(current, nil); !reflect.DeepEqual(got, current) {
++		t.Fatalf("empty cleanup changed ownership: got %v, want %v", got, current)
++	}
++}
 diff --git a/internal/shim/task/mount_linux.go b/internal/shim/task/mount_linux.go
-index 473c06d..3f200ec 100644
+index 473c06d..5dfe7f2 100644
 --- a/internal/shim/task/mount_linux.go
 +++ b/internal/shim/task/mount_linux.go
 @@ -18,7 +18,9 @@ package task
@@ -68,7 +86,7 @@ index 473c06d..3f200ec 100644
  
  	"github.com/containerd/containerd/api/types"
  	"github.com/containerd/containerd/v2/core/mount"
-@@ -28,6 +30,40 @@ import (
+@@ -28,6 +30,54 @@ import (
  	"github.com/containerd/nerdbox/internal/shim/sandbox"
  )
  
@@ -106,6 +124,20 @@ index 473c06d..3f200ec 100644
 +	return errors.Join(errs...)
 +}
 +
++// remainingHostMountPaths forgets only the successfully cleaned prefix. If
++// ownership changed concurrently, it preserves the full current list.
++func remainingHostMountPaths(current, cleaned []string) []string {
++	if len(cleaned) > len(current) {
++		return current
++	}
++	for i, path := range cleaned {
++		if current[i] != path {
++			return current
++		}
++	}
++	return append([]string(nil), current[len(cleaned):]...)
++}
++
  func setupMounts(ctx context.Context, id string, m []*types.Mount, rootfs, lmounts string, da *diskAllocator, bundleDir string) ([]*types.Mount, []sandbox.Opt, error) {
  	// Handle mounts
  	var sbOpts []sandbox.Opt
@@ -123,7 +155,7 @@ index 372fecc..95bf808 100644
  	return transformMounts(ctx, id, ms, da, bundleDir)
  }
 diff --git a/internal/shim/task/service.go b/internal/shim/task/service.go
-index ab9990a..c02add8 100644
+index 1946605..766f8fb 100644
 --- a/internal/shim/task/service.go
 +++ b/internal/shim/task/service.go
 @@ -210,6 +210,9 @@ type service struct {
@@ -136,16 +168,15 @@ index ab9990a..c02add8 100644
  
  	debug                bool
  	initiateShutdown     func()
-@@ -232,6 +235,8 @@ func (s *service) shutdown(ctx context.Context) error {
+@@ -232,6 +235,7 @@ func (s *service) shutdown(ctx context.Context) error {
  	s.mu.Lock()
  	containers := s.containers
  	s.containers = make(map[string]*container)
-+	hostMountPaths := s.hostMountPaths
-+	s.hostMountPaths = nil
++	hostMountPaths := append([]string(nil), s.hostMountPaths...)
  	s.mu.Unlock()
  
  	var errs []error
-@@ -241,6 +246,7 @@ func (s *service) shutdown(ctx context.Context) error {
+@@ -241,6 +245,7 @@ func (s *service) shutdown(ctx context.Context) error {
  		}
  	}
  
@@ -153,7 +184,7 @@ index ab9990a..c02add8 100644
  	if s.sb != nil {
  		// Unmount all block volumes inside the guest before stopping the VM,
  		// to flush ext4 journals and dirty pages to the virtio-blk devices.
-@@ -255,7 +261,17 @@ func (s *service) shutdown(ctx context.Context) error {
+@@ -255,7 +260,21 @@ func (s *service) shutdown(ctx context.Context) error {
  
  		if err := s.sb.Stop(ctx); err != nil {
  			errs = append(errs, fmt.Errorf("sandbox shutdown: %w", err))
@@ -165,13 +196,17 @@ index ab9990a..c02add8 100644
 +	if vmStopped {
 +		if err := unmountHostMountPaths(hostMountPaths); err != nil {
 +			errs = append(errs, fmt.Errorf("unmount host rootfs mounts: %w", err))
++		} else {
++			s.mu.Lock()
++			s.hostMountPaths = remainingHostMountPaths(s.hostMountPaths, hostMountPaths)
++			s.mu.Unlock()
  		}
 +	} else if len(hostMountPaths) != 0 {
-+		log.G(ctx).WithField("mount_paths", hostMountPaths).Warn("keeping host rootfs mounts because sandbox shutdown failed")
++		log.G(ctx).Warn("keeping host rootfs mounts because sandbox shutdown failed")
  	}
  
  	// Remove the rootfs directory on Windows so containerd's bundle cleanup
-@@ -367,6 +383,9 @@ func (s *service) Create(ctx context.Context, r *taskAPI.CreateTaskRequest) (_ *
+@@ -362,6 +381,9 @@ func (s *service) Create(ctx context.Context, r *taskAPI.CreateTaskRequest) (_ *
  	if err != nil {
  		return nil, errgrpc.ToGRPC(err)
  	}
