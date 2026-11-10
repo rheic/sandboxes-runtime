@@ -8,6 +8,9 @@
   manifest checks, and a deterministic EROFS guest-rootfs recipe.
 - Restrict the experimental Linux guest network helper to `NETLINK_ROUTE` and
   clean host rootfs mounts after successful VM shutdown.
+- Restrict VM runtime asset lookup to explicit `LIBKRUN_PATH` or fixed system
+  directories; the shim builder publishes output atomically without following
+  symlink destinations.
 
 ### Security and limitations
 
@@ -17,6 +20,8 @@
   scope.
 - Runtime build-image pinning, signed provenance, abrupt-shim crash recovery,
   independent security review and full Docker Sandboxes parity remain open.
+- Runtime assets are not digest-verified at load time; configured and default
+  host asset directories must remain protected from untrusted writes.
 
 ## v0.0.20 — 2026-11-03
 
