@@ -36,7 +36,7 @@ components:
 patches:
   nerdbox-gpt-threshold:
     file: patches/nerdbox-gpt-threshold.patch
-    sha256: 1abfa98b9843118699653fc7f24c8db6b4ae1036ec5c5d6fe0eefb8064a9131f
+    sha256: 3df47b5267861607b37d9a1f1baf3b5b2c6e36abdd62b1f864fcf75deb9e2de2
     status: experimental
   nerdbox-linux-host-mount-cleanup:
     file: patches/nerdbox-linux-host-mount-cleanup.patch
