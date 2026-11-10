@@ -67,9 +67,11 @@ tests are recorded in the plan:
   and complete DNS-rebinding and bypass guarantees are not established; the
   patch remains experimental.
 - `patches/nerdbox-gpt-threshold.patch` — raises nerdbox's GPT threshold from
-  8 to 126 layers so up to 126 layers use raw virtio EROFS disks. Larger stacks
-  use a GPT VMDK, whose 128-partition limit is enforced by the descriptor
-  builder. Build the shim with
+  8 to 126 layers so up to 126 layers use raw virtio EROFS disks. The disk
+  allocator follows Linux multi-letter names after `vdz` (for example, `vdaa`),
+  so these raw mounts retain valid guest paths beyond 26 devices. Larger stacks
+  use the GPT VMDK path, which is not accepted by the pinned libkrun 1.19.6 build
+  and remains unsupported. Build the shim with
   `scripts/build-nerdbox-shim.sh`; the hypervisor entitlement is mandatory.
 - `patches/nerdbox-linux-host-mount-cleanup.patch` — tracks rootfs bundle paths
   prepared on the host and unmounts them only after the VM has stopped, so
