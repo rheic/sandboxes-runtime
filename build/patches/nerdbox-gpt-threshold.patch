@@ -1,8 +1,16 @@
 diff --git a/internal/shim/task/mount.go b/internal/shim/task/mount.go
-index 4f626ea..f7598ca 100644
+index 4f626ea..ec652bf 100644
 --- a/internal/shim/task/mount.go
 +++ b/internal/shim/task/mount.go
-@@ -41,33 +41,50 @@ import (
+@@ -23,6 +23,7 @@ import (
+ 	"os"
+ 	"path"
+ 	"path/filepath"
++	"runtime"
+ 	"strings"
+ 
+ 	"github.com/containerd/containerd/api/types"
+@@ -41,33 +42,60 @@ import (
  // mounts (those carrying device= options) are not affected: they continue
  // to use the existing flat-concat VMDK path inline.
  //
@@ -11,12 +19,22 @@ index 4f626ea..f7598ca 100644
 -// lets the shim handle deep stacks of independent erofs mounts without
 -// coordinating layer offsets in the snapshotter.
 -const gptLayerThreshold = 8
-+// Raw block devices use Linux's multi-letter naming after vdz. The elevated
-+// threshold avoids the GPT VMDK path for stacks supported by the pinned
-+// libkrun build, which does not accept that GPT VMDK format.
++// Raw block devices use Linux's multi-letter naming after vdz. Linux still
++// limits a task to 25 container block disks (the VM reserves /dev/vda), and
++// the pinned libkrun build rejects the GPT VMDK format. The elevated threshold
++// avoids entering that unsupported path for supported stack sizes.
 +const gptLayerThreshold = 126
  
 -// diskAllocator assigns sequential virtio disk letters starting after any
++const maxLinuxContainerBlockDisks = 25
++
++func validateLinuxContainerBlockDiskCount(existing, additional int) error {
++	if existing+additional > maxLinuxContainerBlockDisks {
++		return fmt.Errorf("Linux task exceeds the supported limit of %d container virtio-block disks: %w", maxLinuxContainerBlockDisks, errdefs.ErrNotImplemented)
++	}
++	return nil
++}
++
 +// diskAllocator assigns sequential Linux virtio disk names starting after any
  // disks reserved by the VM implementation (see vm.Manager.ReservedDisks).
  // A single instance is shared across rootfs and volume disk allocation so
@@ -67,7 +85,7 @@ index 4f626ea..f7598ca 100644
  
  type diskOptions struct {
  	name     string
-@@ -129,14 +146,14 @@ func transformMounts(ctx context.Context, id string, ms []*types.Mount, da *disk
+@@ -129,14 +157,14 @@ func transformMounts(ctx context.Context, id string, ms []*types.Mount, da *disk
  				// and regenerate unconditionally so it always reflects the
  				// current device list; the shim must not mutate source dirs.
  				letter := da.Next()
@@ -84,7 +102,7 @@ index 4f626ea..f7598ca 100644
  				if err := erofs.DumpVMDKDescriptorToFile(mergedfsPath, 0xfffffffe, devices); err != nil {
  					log.G(ctx).WithError(err).WithField("path", mergedfsPath).Warn("failed to generate erofs vmdk descriptor")
  					return nil, nil, fmt.Errorf("erofs vmdk: %w", errdefs.ErrNotImplemented)
-@@ -149,7 +166,7 @@ func transformMounts(ctx context.Context, id string, ms []*types.Mount, da *disk
+@@ -149,7 +177,7 @@ func transformMounts(ctx context.Context, id string, ms []*types.Mount, da *disk
  				})
  				am = append(am, &types.Mount{
  					Type:    "erofs",
@@ -93,7 +111,7 @@ index 4f626ea..f7598ca 100644
  					Target:  m.Target,
  					Options: filterOptions(Options),
  				})
-@@ -168,7 +185,7 @@ func transformMounts(ctx context.Context, id string, ms []*types.Mount, da *disk
+@@ -168,7 +196,7 @@ func transformMounts(ctx context.Context, id string, ms []*types.Mount, da *disk
  
  		case "ext4":
  			letter := da.Next()
@@ -102,7 +120,7 @@ index 4f626ea..f7598ca 100644
  			// virtiofs implementation has a limit of 36 characters for the tag
  			if len(disk) > 36 {
  				disk = disk[:36]
-@@ -182,7 +199,7 @@ func transformMounts(ctx context.Context, id string, ms []*types.Mount, da *disk
+@@ -182,7 +210,7 @@ func transformMounts(ctx context.Context, id string, ms []*types.Mount, da *disk
  			})
  			am = append(am, &types.Mount{
  				Type:    "ext4",
@@ -111,7 +129,23 @@ index 4f626ea..f7598ca 100644
  				Target:  m.Target,
  				Options: filterOptions(m.Options),
  			})
-@@ -280,7 +297,7 @@ func finalizeErofsCandidates(ctx context.Context, id string, da *diskAllocator,
+@@ -258,6 +286,15 @@ func finalizeErofsCandidates(ctx context.Context, id string, da *diskAllocator,
+ 	if len(candidates) == 0 {
+ 		return nil
+ 	}
++	// Linux's pinned libkrun build cannot consume the GPT VMDK produced below.
++	// Reject a stack that would exceed the existing vda-vdz block-device cap
++	// before generating an unusable VMDK or attempting to boot the VM. da.count
++	// includes block disks allocated inline earlier in transformMounts.
++	if runtime.GOOS == "linux" {
++		if err := validateLinuxContainerBlockDiskCount(da.count(), len(candidates)); err != nil {
++			return err
++		}
++	}
+ 
+ 	if len(candidates) > gptLayerThreshold {
+ 		sources := make([]string, len(candidates))
+@@ -280,7 +317,7 @@ func finalizeErofsCandidates(ctx context.Context, id string, da *diskAllocator,
  			}
  		}
  		letter := da.Next()
@@ -120,7 +154,7 @@ index 4f626ea..f7598ca 100644
  		if len(disk) > 36 {
  			disk = disk[:36]
  		}
-@@ -293,7 +310,7 @@ func finalizeErofsCandidates(ctx context.Context, id string, da *diskAllocator,
+@@ -293,7 +330,7 @@ func finalizeErofsCandidates(ctx context.Context, id string, da *diskAllocator,
  		for i, c := range candidates {
  			am[c.outIdx] = &types.Mount{
  				Type:    "erofs",
@@ -129,7 +163,7 @@ index 4f626ea..f7598ca 100644
  				Target:  c.target,
  				Options: filterOptions(c.options),
  			}
-@@ -304,7 +321,7 @@ func finalizeErofsCandidates(ctx context.Context, id string, da *diskAllocator,
+@@ -304,7 +341,7 @@ func finalizeErofsCandidates(ctx context.Context, id string, da *diskAllocator,
  	// Below the threshold: one raw virtio-block device per candidate.
  	for _, c := range candidates {
  		letter := da.Next()
@@ -138,7 +172,7 @@ index 4f626ea..f7598ca 100644
  		if len(disk) > 36 {
  			disk = disk[:36]
  		}
-@@ -316,7 +333,7 @@ func finalizeErofsCandidates(ctx context.Context, id string, da *diskAllocator,
+@@ -316,7 +353,7 @@ func finalizeErofsCandidates(ctx context.Context, id string, da *diskAllocator,
  		})
  		am[c.outIdx] = &types.Mount{
  			Type:    "erofs",
@@ -147,7 +181,7 @@ index 4f626ea..f7598ca 100644
  			Target:  c.target,
  			Options: filterOptions(c.options),
  		}
-@@ -448,13 +465,13 @@ func (bm *blockMounter) FromBundle(ctx context.Context, b *bundle.Bundle, id str
+@@ -448,13 +485,13 @@ func (bm *blockMounter) FromBundle(ctx context.Context, b *bundle.Bundle, id str
  		log.G(ctx).WithField("mount", m).Debug("transforming ext4 volume mount to virtio-block device")
  
  		letter := da.Next()
@@ -165,10 +199,22 @@ index 4f626ea..f7598ca 100644
  		hostSrc := b.Spec.Mounts[i].Source
  		b.Spec.Mounts[i].Type = "bind"
 diff --git a/internal/shim/task/mount_test.go b/internal/shim/task/mount_test.go
-index 66b73a2..be9e86c 100644
+index 66b73a2..3c6763f 100644
 --- a/internal/shim/task/mount_test.go
 +++ b/internal/shim/task/mount_test.go
-@@ -77,7 +77,7 @@ func TestBlockMountsProvider(t *testing.T) {
+@@ -21,9 +21,11 @@ import (
+ 	"fmt"
+ 	"os"
+ 	"path/filepath"
++	"runtime"
+ 	"testing"
+ 
+ 	"github.com/containerd/containerd/api/types"
++	"github.com/containerd/errdefs"
+ 	"github.com/opencontainers/runtime-spec/specs-go"
+ 	"github.com/stretchr/testify/assert"
+ 	"github.com/stretchr/testify/require"
+@@ -77,7 +79,7 @@ func TestBlockMountsProvider(t *testing.T) {
  				{Type: "ext4", Source: "/vol/myvolume.img", Destination: "/data"},
  			},
  			wantDisks: []sandbox.Disk{
@@ -177,7 +223,7 @@ index 66b73a2..be9e86c 100644
  			},
  			wantSpecMounts: []specs.Mount{
  				{Type: "bind", Source: "/run/mnt/sda", Destination: "/data", Options: []string{"rbind"}},
-@@ -92,7 +92,7 @@ func TestBlockMountsProvider(t *testing.T) {
+@@ -92,7 +94,7 @@ func TestBlockMountsProvider(t *testing.T) {
  				{Type: "ext4", Source: "/vol/myvolume.img", Destination: "/data", Options: []string{"ro"}},
  			},
  			wantDisks: []sandbox.Disk{
@@ -186,7 +232,7 @@ index 66b73a2..be9e86c 100644
  			},
  			wantSpecMounts: []specs.Mount{
  				{Type: "bind", Source: "/run/mnt/sda", Destination: "/data", Options: []string{"rbind", "ro"}},
-@@ -108,8 +108,8 @@ func TestBlockMountsProvider(t *testing.T) {
+@@ -108,8 +110,8 @@ func TestBlockMountsProvider(t *testing.T) {
  				{Type: "ext4", Source: "/vol/vol2.img", Destination: "/logs", Options: []string{"ro"}},
  			},
  			wantDisks: []sandbox.Disk{
@@ -197,7 +243,7 @@ index 66b73a2..be9e86c 100644
  			},
  			wantSpecMounts: []specs.Mount{
  				{Type: "bind", Source: "/run/mnt/sda", Destination: "/data", Options: []string{"rbind"}},
-@@ -128,7 +128,7 @@ func TestBlockMountsProvider(t *testing.T) {
+@@ -128,7 +130,7 @@ func TestBlockMountsProvider(t *testing.T) {
  				{Type: "proc", Source: "proc", Destination: "/proc"},
  			},
  			wantDisks: []sandbox.Disk{
@@ -206,7 +252,7 @@ index 66b73a2..be9e86c 100644
  			},
  			wantSpecMounts: []specs.Mount{
  				{Type: "tmpfs", Source: "tmpfs", Destination: "/tmp"},
-@@ -437,6 +437,37 @@ func makeErofsLayer(t *testing.T, dir, name string, size int64) string {
+@@ -437,6 +439,44 @@ func makeErofsLayer(t *testing.T, dir, name string, size int64) string {
  //     GPT-partitioned VMDK consuming a single virtio-block letter;
  //   - multi-device and plain erofs mounts coexist: the former are inline,
  //     the latter contribute to the threshold-driven GPT decision.
@@ -241,10 +287,28 @@ index 66b73a2..be9e86c 100644
 +	}
 +}
 +
++func TestLinuxContainerBlockDiskCountLimit(t *testing.T) {
++	if err := validateLinuxContainerBlockDiskCount(24, 1); err != nil {
++		t.Fatalf("maximum supported container block disk count rejected: %v", err)
++	}
++	require.ErrorIs(t, validateLinuxContainerBlockDiskCount(25, 1), errdefs.ErrNotImplemented)
++}
++
  func TestTransformMountsErofs(t *testing.T) {
  	const id = "cid"
  
-@@ -550,7 +581,7 @@ func TestTransformMountsErofs(t *testing.T) {
+@@ -540,6 +580,10 @@ func TestTransformMountsErofs(t *testing.T) {
+ 
+ 		da := newDiskAllocator(0)
+ 		out, opts, err := transformMounts(context.Background(), id, ms, &da, bundleDir)
++		if runtime.GOOS == "linux" {
++			require.ErrorIs(t, err, errdefs.ErrNotImplemented)
++			return
++		}
+ 		require.NoError(t, err)
+ 
+ 		require.Len(t, out, gptLayerThreshold)
+@@ -550,7 +594,7 @@ func TestTransformMountsErofs(t *testing.T) {
  		// Disk letters are allocated in deferred order, but candidates are
  		// captured in input order, so output mounts get vda..vd<threshold>.
  		for i := 0; i < gptLayerThreshold; i++ {
@@ -253,3 +317,53 @@ index 66b73a2..be9e86c 100644
  			assert.Equal(t, fmt.Sprintf("/m/%d", i), out[i].Target)
  			// Raw disk: VMDK flag must NOT be set.
  			assert.Equal(t, sandbox.DiskFlagReadonly, o.Disks[i].Flags)
+@@ -579,6 +623,10 @@ func TestTransformMountsErofs(t *testing.T) {
+ 
+ 		da := newDiskAllocator(0)
+ 		out, opts, err := transformMounts(context.Background(), id, ms, &da, bundleDir)
++		if runtime.GOOS == "linux" {
++			require.ErrorIs(t, err, errdefs.ErrNotImplemented)
++			return
++		}
+ 		require.NoError(t, err)
+ 
+ 		require.Len(t, out, mountCount)
+@@ -650,6 +698,10 @@ func TestTransformMountsErofs(t *testing.T) {
+ 
+ 		da := newDiskAllocator(0)
+ 		out, opts, err := transformMounts(context.Background(), id, ms, &da, bundleDir)
++		if runtime.GOOS == "linux" {
++			require.ErrorIs(t, err, errdefs.ErrNotImplemented)
++			return
++		}
+ 		require.NoError(t, err)
+ 
+ 		require.Len(t, out, len(ms))
+@@ -696,6 +748,10 @@ func TestTransformMountsErofs(t *testing.T) {
+ 
+ 		da := newDiskAllocator(0)
+ 		_, _, err := transformMounts(context.Background(), id, ms, &da, bundleDir)
++		if runtime.GOOS == "linux" {
++			require.ErrorIs(t, err, errdefs.ErrNotImplemented)
++			return
++		}
+ 		require.NoError(t, err)
+ 
+ 		// VMDK must not be regenerated on a second call with the same inputs.
+diff --git a/internal/shim/task/service.go b/internal/shim/task/service.go
+index 1946605..444ce71 100644
+--- a/internal/shim/task/service.go
++++ b/internal/shim/task/service.go
+@@ -370,9 +370,9 @@ func (s *service) Create(ctx context.Context, r *taskAPI.CreateTaskRequest) (_ *
+ 		return nil, errgrpc.ToGRPC(err)
+ 	}
+ 
+-	// Enforce the virtio-block letter limit (vda–vdz = 26 devices total).
+-	// count() reflects only container disks; add the reserved range to get
+-	// the true total and compare against the full alphabet.
++	// Bound the total guest device tree, including devices reserved by the VM.
++	// The VM reserves /dev/vda for its root filesystem. Keep the existing
++	// vda-vdz aggregate limit in sync with the Linux EROFS preflight guard.
+ 	if total := reservedDisks + da.count(); total > 26 {
+ 		return nil, errgrpc.ToGRPCf(errdefs.ErrNotImplemented, "exceeded maximum virtio disk count: %d > 26", total)
+ 	}

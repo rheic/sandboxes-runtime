@@ -145,11 +145,23 @@ diff --git a/internal/shim/task/mount_other.go b/internal/shim/task/mount_other.
 index 372fecc..95bf808 100644
 --- a/internal/shim/task/mount_other.go
 +++ b/internal/shim/task/mount_other.go
-@@ -26,6 +26,8 @@ import (
+@@ -26,6 +26,20 @@ import (
  	"github.com/containerd/nerdbox/internal/shim/sandbox"
  )
  
 +func unmountHostMountPaths(_ []string) error { return nil }
++
++func remainingHostMountPaths(current, cleaned []string) []string {
++	if len(cleaned) > len(current) {
++		return current
++	}
++	for i, path := range cleaned {
++		if current[i] != path {
++			return current
++		}
++	}
++	return append([]string(nil), current[len(cleaned):]...)
++}
 +
  func setupMounts(ctx context.Context, id string, ms []*types.Mount, _, _ string, da *diskAllocator, bundleDir string) ([]*types.Mount, []sandbox.Opt, error) {
  	return transformMounts(ctx, id, ms, da, bundleDir)
