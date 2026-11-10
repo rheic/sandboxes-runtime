@@ -1,5 +1,8 @@
 # Runtime build pins
 
+<img src="../docs/assets/rheic-shark.png" alt="Rheic shark logo" width="180">
+
+
 This directory pins the native runtime inputs used by the containerd/nerdbox
 adapter. The manifest is authoritative; the patches are checked by the
 `internal/manifest` test.
