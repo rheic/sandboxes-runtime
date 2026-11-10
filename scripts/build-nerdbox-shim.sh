@@ -7,6 +7,17 @@
 set -eu
 : "${NERDBOX_SRC:?set NERDBOX_SRC to an unpacked nerdbox v0.2.5 tree}"
 : "${OUT:?set OUT to the shim output path}"
+case "$OUT" in
+  */) echo "OUT must name a file, not a directory: $OUT" >&2; exit 1 ;;
+esac
+if [ -L "$OUT" ]; then
+  echo "refusing symlink shim output: $OUT" >&2
+  exit 1
+fi
+if [ -d "$OUT" ]; then
+  echo "refusing directory shim output: $OUT" >&2
+  exit 1
+fi
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 HOST_OS=$(uname -s)
 case "$HOST_OS" in
@@ -31,7 +42,14 @@ case "$HOST_OS" in
 esac
 "$ROOT/scripts/verify-pinned-source.sh" "$NERDBOX_SRC" 28c86e8e16c62a08079531ebe99e24a7bdad3d62
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/rheic-nerdbox-build.XXXXXX")
-trap 'rm -rf "$WORK"' EXIT INT TERM
+OUT_TMP=
+cleanup() {
+  if [ -n "$OUT_TMP" ]; then
+    rm -f -- "$OUT_TMP"
+  fi
+  rm -rf "$WORK"
+}
+trap cleanup EXIT INT TERM
 cp -R "$NERDBOX_SRC" "$WORK/src"
 chmod -R u+w "$WORK/src"
 "$ROOT/scripts/verify-pinned-source.sh" "$WORK/src" 28c86e8e16c62a08079531ebe99e24a7bdad3d62
@@ -50,9 +68,17 @@ if [ "$HOST_OS" = Darwin ]; then
     --entitlements cmd/containerd-shim-nerdbox-v1/containerd-shim-nerdbox-v1.entitlements \
     "$WORK/shim"
 fi
-mkdir -p "$(dirname -- "$OUT")"
-cp "$WORK/shim" "$OUT"
-chmod 0755 "$OUT"
+OUT_DIR=$(dirname -- "$OUT")
+mkdir -p "$OUT_DIR"
+OUT_TMP=$(mktemp "$OUT.tmp.XXXXXX")
+cp "$WORK/shim" "$OUT_TMP"
+chmod 0755 "$OUT_TMP"
+if [ -L "$OUT" ]; then
+  echo "refusing symlink shim output: $OUT" >&2
+  exit 1
+fi
+mv -f "$OUT_TMP" "$OUT"
+OUT_TMP=
 if [ "$HOST_OS" = Darwin ]; then
   shasum -a 256 "$OUT"
 else
