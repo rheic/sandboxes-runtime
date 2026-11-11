@@ -11,6 +11,10 @@ adapter. The manifest is authoritative; the patches are checked by the
 
 - containerd `2.4.2`
 - nerdbox `0.2.5`, commit `28c86e8e16c62a08079531ebe99e24a7bdad3d62`
+- Go toolchain `1.27.4` for Linux ARM64 and Darwin ARM64; archive digests are
+  recorded in `manifest.yaml`
+- crun `1.30.1` Linux ARM64, signed upstream release asset; the build recipe
+  checks the pinned SHA-256 and reported version before embedding it
 - ARM64 EROFS rootfs base from the pinned nerdbox source, SHA-256 in
   `manifest.yaml`
 - libkrun `1.19.6`, commit `227b2de6ed323fe180e02f871c5f325a90c13cc2`
@@ -138,16 +142,19 @@ mkfs.erofs -b4096 -zlz4 /path/to/nerdbox-rootfs.erofs /path/to/guest-rootfs
 
 The Linux guest root filesystem must contain the vminitd built from the pinned
 source plus the route-only netlink patch. Rebuild the EROFS image from the
-manifest-pinned base with Go 1.27.3 and erofs-utils 1.7.1:
+manifest-pinned base with Go 1.27.4 and erofs-utils 1.7.1:
 
 ```sh
 NERDBOX_SRC=/path/to/clean/nerdbox-v0.2.5 \
 BASE_ROOTFS=/path/to/nerdbox-rootfs-arm64.erofs \
+CRUN_BINARY=/path/to/verified/crun-1.30.1-linux-arm64-disable-systemd \
 OUT=/path/to/nerdbox-rootfs-arm64-rheic.erofs \
   scripts/build-nerdbox-linux-rootfs.sh
 ```
 
-The script verifies the source commit, base rootfs and patch digests; it refuses
+The crun binary must match the manifest-pinned SHA-256 and report version
+1.30.1. Verify the upstream release signature before use. The script verifies
+the source commit, base rootfs and patch digests; it refuses
 to overwrite an existing output. It builds a static ARM64 `vminitd`, preserves
 the base file timestamps, assigns the replacement `vminitd` the base binary's
 timestamp, normalizes EROFS inode timestamps to that pinned timestamp, uses a
