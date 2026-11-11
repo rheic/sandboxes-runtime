@@ -24,6 +24,7 @@ vuln:
 
 runtime-verify:
 	go test ./internal/manifest
+	sh scripts/test-build-nerdbox-shim-output.sh
 
 clean:
 	rm -rf bin

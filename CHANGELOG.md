@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.0.30 — 2026-11-10
+
+### Added
+
+- Add pinned Linux ARM64 libkrun and nerdbox shim build recipes, runtime
+  manifest checks, and a deterministic EROFS guest-rootfs recipe.
+- Restrict the experimental Linux guest network helper to `NETLINK_ROUTE` and
+  clean host rootfs mounts after successful VM shutdown and after abrupt shim
+  death through containerd's bundle-scoped delete action.
+- Restrict VM runtime asset lookup to explicit `LIBKRUN_PATH` or fixed system
+  directories; the shim builder publishes output atomically without following
+  symlink destinations.
+- Pin Go 1.27.4 for runtime builds and verify the signed crun 1.30.1 guest
+  runtime release by checksum before embedding it in the EROFS image.
+
+### Security and limitations
+
+- Linux runtime support remains experimental. Acceptance is limited to a
+  privileged rootful workflow in a macOS-hosted Ubuntu ARM64 VM; native Linux,
+  ordinary-user and rootless acceptance remain open. Windows runtime is out of
+  scope.
+- Runtime build-image pinning, signed provenance, independent security review
+  and full Docker Sandboxes parity remain open. Abrupt-shim cleanup has been
+  verified for an owned EROFS bundle in a privileged rootful Linux ARM64 VM;
+  native Linux and ordinary-user/rootless acceptance remain open.
+- Runtime assets are not digest-verified at load time; configured and default
+  host asset directories must remain protected from untrusted writes.
+- The guest crun update addresses the upstream rootfs `/dev` symlink advisory
+  affecting versions before 1.28. The latest upstream release is used because
+  crun is security-sensitive guest runtime code; its release asset and
+  checksum list signatures are verified against the pinned upstream key.
+
 ## v0.0.20 — 2026-11-03
 
 ### Added

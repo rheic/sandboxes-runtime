@@ -1,0 +1,93 @@
+diff --git a/internal/vm/libkrun/instance.go b/internal/vm/libkrun/instance.go
+index 158b48f..2d67f7e 100644
+--- a/internal/vm/libkrun/instance.go
++++ b/internal/vm/libkrun/instance.go
+@@ -68,30 +68,21 @@ func (*vmManager) NewInstance(ctx context.Context, state string) (vm.Instance, e
+ 	}
+ 
+ 	var (
+-		p1         = filepath.SplitList(os.Getenv("PATH"))
+-		p2         = filepath.SplitList(os.Getenv("LIBKRUN_PATH"))
+-		krunPath   string
+-		kernelPath string
+-		rootfsPath string
++		searchPaths = runtimeAssetSearchPaths(os.Getenv("LIBKRUN_PATH"), runtime.GOOS)
++		krunPath    string
++		kernelPath  string
++		rootfsPath  string
+ 	)
+-	if runtime.GOOS != "windows" && len(p2) == 0 {
+-		p2 = []string{"/usr/local/lib", "/usr/local/lib64", "/usr/lib", "/lib"}
+-	}
+ 	arch := kernelArch()
+ 	sharedNames := []string{fmt.Sprintf("libkrun-%s.so", arch), "libkrun.so"}
+ 	switch runtime.GOOS {
+ 	case "darwin":
+ 		sharedNames = []string{fmt.Sprintf("libkrun-%s.dylib", arch), "libkrun.dylib", fmt.Sprintf("libkrun-efi-%s.dylib", arch), "libkrun-efi.dylib"}
+-		p2 = append(p2, "/opt/homebrew/lib")
+ 	case "windows":
+ 		sharedNames = []string{"krun.dll"}
+ 	}
+ 
+-	for _, dir := range append(p1, p2...) {
+-		if dir == "" {
+-			// Unix shell semantics: path element "" means "."
+-			dir = "."
+-		}
++	for _, dir := range searchPaths {
+ 		var path string
+ 		if krunPath == "" {
+ 			for _, sharedName := range sharedNames {
+@@ -119,13 +110,13 @@ func (*vmManager) NewInstance(ctx context.Context, state string) (vm.Instance, e
+ 		}
+ 	}
+ 	if krunPath == "" {
+-		return nil, fmt.Errorf("%s not found in PATH or LIBKRUN_PATH", strings.Join(sharedNames, " or "))
++		return nil, fmt.Errorf("%s not found in runtime asset search paths", strings.Join(sharedNames, " or "))
+ 	}
+ 	if kernelPath == "" {
+-		return nil, fmt.Errorf("nerdbox-kernel not found in PATH or LIBKRUN_PATH")
++		return nil, fmt.Errorf("nerdbox-kernel not found in runtime asset search paths")
+ 	}
+ 	if rootfsPath == "" {
+-		return nil, fmt.Errorf("nerdbox-rootfs-%s.erofs or nerdbox-rootfs.erofs not found in PATH or LIBKRUN_PATH", arch)
++		return nil, fmt.Errorf("nerdbox-rootfs-%s.erofs or nerdbox-rootfs.erofs not found in runtime asset search paths", arch)
+ 	}
+ 
+ 	lib, handler, err := openLibkrun(krunPath)
+@@ -165,6 +156,35 @@ func (*vmManager) NewInstance(ctx context.Context, state string) (vm.Instance, e
+ 	}, nil
+ }
+ 
++// runtimeAssetSearchPaths treats an explicit LIBKRUN_PATH as the complete
++// runtime bundle and rejects empty or relative entries. Without an explicit
++// bundle, only fixed system directories are searched; PATH is not trusted for
++// native runtime libraries or boot assets.
++func runtimeAssetSearchPaths(libkrunPathEnv, goos string) []string {
++	if explicitPaths := filepath.SplitList(libkrunPathEnv); len(explicitPaths) != 0 {
++		return absolutePaths(explicitPaths)
++	}
++	var libPaths []string
++	if goos != "windows" {
++		libPaths = []string{"/usr/local/lib", "/usr/local/lib64", "/usr/lib", "/lib"}
++	}
++	if goos == "darwin" {
++		libPaths = append(libPaths, "/opt/homebrew/lib")
++	}
++	return libPaths
++}
++
++func absolutePaths(paths []string) []string {
++	filtered := make([]string, 0, len(paths))
++	for _, dir := range paths {
++		if dir == "" || !filepath.IsAbs(dir) {
++			continue
++		}
++		filtered = append(filtered, dir)
++	}
++	return filtered
++}
++
+ type vmInstance struct {
+ 	mu    sync.Mutex
+ 	vmc   *vmcontext

@@ -11,7 +11,15 @@ adapter. The manifest is authoritative; the patches are checked by the
 
 - containerd `2.4.2`
 - nerdbox `0.2.5`, commit `28c86e8e16c62a08079531ebe99e24a7bdad3d62`
-- libkrun `1.19.6`
+- Go toolchain `1.27.4` for Linux ARM64 and Darwin ARM64; archive digests are
+  recorded in `manifest.yaml`
+- crun `1.30.1` Linux ARM64, signed upstream release asset; the build recipe
+  checks the pinned SHA-256 and reported version before embedding it
+- ARM64 EROFS rootfs base from the pinned nerdbox source, SHA-256 in
+  `manifest.yaml`
+- libkrun `1.19.6`, commit `227b2de6ed323fe180e02f871c5f325a90c13cc2`
+- libkrunfw `5.6.2`, commit `f14ac64ca8a04c6c9d76cac1c61ee050809c88c9`
+- Linux ARM64 kernel source `6.12.109`, SHA-256 in `manifest.yaml`
 - gvisor-tap-vsock commit `0b0819c174331f5b86d96db3ab7aad7dd126078e`
 - QEMU `11.1.3` for the experimental Windows WHPX backend, source SHA-512 in
   `manifest.yaml`
@@ -62,10 +70,49 @@ tests are recorded in the plan:
   after rule revocation, and reload revocation of active flows. HTTP Host
   and complete DNS-rebinding and bypass guarantees are not established; the
   patch remains experimental.
-- `patches/nerdbox-gpt-threshold.patch` — raises nerdbox's GPT threshold from
-  8 to 128 layers so multi-layer images stay on raw virtio EROFS disks instead
-  of the GPT VMDK path that libkrun 1.19.6 rejects. Build the shim with
-  `scripts/build-nerdbox-shim.sh`; the hypervisor entitlement is mandatory.
+- `patches/nerdbox-gpt-threshold.patch` — the disk allocator follows Linux
+  multi-letter names after `vdz` (for example, `vdaa`) for deterministic device
+  naming. On Linux, the shim declines a block-device mapping that needs more
+  than 25 container disks (the VM reserves one disk for its rootfs) before
+  generating a GPT VMDK. `setupMounts` then uses its existing host-mount
+  fallback and shares the assembled rootfs through virtiofs. That fallback
+  needs host permission to mount the EROFS layers; rootless acceptance is open.
+  The pinned Linux libkrun build does not accept the GPT VMDK format. Build the
+  shim with `scripts/build-nerdbox-shim.sh`; the hypervisor entitlement is
+  mandatory.
+- `patches/nerdbox-linux-host-mount-cleanup.patch` — tracks rootfs bundle paths
+  prepared on the host and unmounts them only after the VM has stopped, so
+  containerd can remove read-only EROFS bundle trees. If VM shutdown or
+  unmount fails, the service retains exact path ownership for a retry; paths
+  added concurrently are preserved. Tests cover duplicate, invalid, failed
+  unmount, and ownership-retention cases. Containerd's delete action also
+  waits for the dead shim's PID lock and then unmounts only the fixed `mounts`
+  and `rootfs` subtrees of that task's validated bundle, recovering those
+  mounts after abrupt shim death. Same-UID bundle-path races remain inside the
+  host user's trust boundary.
+- `patches/nerdbox-network-route-only.patch` — asks the Linux guest networking
+  helper for only `NETLINK_ROUTE`, the family it uses for veth, address, and
+  route operations. This avoids opening unused XFRM and netfilter families
+  while connecting a container network namespace. An owned Linux ARM64 P-04
+  service run completed Create/Exec/Stop/Start/revoke/Delete with this patched
+  vminitd and a synthetic keyring. The run used a root daemon and rootful
+  containerd inside an isolated Lima VM; it does not establish ordinary-user,
+  rootless, native Linux-host or full Docker parity. The patch remains
+  experimental until independent review and product privilege integration.
+- `patches/nerdbox-ttrpc-close-once.patch` — avoids closing the TTRPC
+  connection a second time after `ttrpc.Client.Close()` has already closed it;
+  keeps raw-connection cleanup when client creation failed and ignores an
+  already-closed socket. Synthetic connection-counting tests cover both paths.
+  This suppresses the redundant-close warning only; it does not validate
+  libkrun vsock proxy cleanup or reconnect behavior.
+- `patches/nerdbox-runtime-asset-search.patch` — treats a non-empty
+  `LIBKRUN_PATH` as the complete runtime asset directory list and ignores
+  empty/relative entries. Without it, only fixed system directories are
+  searched; `PATH` is never used for native libraries, kernel images, or guest
+  rootfs assets. Explicit directories and system locations remain trusted host
+  inputs and must not be writable by untrusted workloads. The shim does not
+  verify per-file digests at load time; prefix verification is a build-time
+  check, not runtime provenance.
 - `patches/qemu-windows-private-pipe-v1.patch` — on Windows, uses the
   `RHEIC_PIPE_SDDL` supplied by the runtime to create QEMU's virtio-serial
   named pipe with a protected current-user + SYSTEM DACL and rejects remote
@@ -93,8 +140,28 @@ blocks, which the pinned guest kernel rejects during boot:
 mkfs.erofs -b4096 -zlz4 /path/to/nerdbox-rootfs.erofs /path/to/guest-rootfs
 ```
 
-The guest root filesystem must contain the vminitd built from the pinned
-unmodified source. Do not use the removed broad cgroup/capability patch.
+The Linux guest root filesystem must contain the vminitd built from the pinned
+source plus the route-only netlink patch. Rebuild the EROFS image from the
+manifest-pinned base with Go 1.27.4 and erofs-utils 1.7.1:
+
+```sh
+NERDBOX_SRC=/path/to/clean/nerdbox-v0.2.5 \
+BASE_ROOTFS=/path/to/nerdbox-rootfs-arm64.erofs \
+CRUN_BINARY=/path/to/verified/crun-1.30.1-linux-arm64-disable-systemd \
+OUT=/path/to/nerdbox-rootfs-arm64-rheic.erofs \
+  scripts/build-nerdbox-linux-rootfs.sh
+```
+
+The crun binary must match the manifest-pinned SHA-256 and report version
+1.30.1. Verify the upstream release signature before use. The script verifies
+the source commit, base rootfs and patch digests; it refuses
+to overwrite an existing output. It builds a static ARM64 `vminitd`, preserves
+the base file timestamps, assigns the replacement `vminitd` the base binary's
+timestamp, normalizes EROFS inode timestamps to that pinned timestamp, uses a
+fixed EROFS UUID and root ownership, then extracts the result to verify the
+embedded binary. This intentionally normalizes timestamps in the immutable
+system rootfs for reproducible EROFS output. Do not use the removed broad
+cgroup/capability patch.
 
 ```sh
 # gvproxy
@@ -115,11 +182,59 @@ Both native build scripts verify the source checkout's exact manifest commit
 and reject tracked changes, untracked files, and ignored files before applying
 patches. Go builds use `-trimpath`, disable VCS stamping, and clear the Go
 build ID so independent build directories do not affect the unsigned payload
-digest. The nerdbox shim
-is then ad-hoc signed for local macOS execution; that signature is not a
-release signature or provenance statement. The runtime adapter must consume
-these artifacts from explicit paths; it must not download `@latest`
-components during a reproducible build.
+digest. On macOS/arm64, the nerdbox shim is ad-hoc signed for local execution;
+that signature is not a release signature or provenance statement. On
+Linux/arm64, `scripts/build-nerdbox-shim.sh` requires an explicit
+`LIBKRUN_PREFIX` and links against its `libkrun` headers/library without macOS
+codesigning. The loader must also find the matching `libkrun` and `libkrunfw`
+shared libraries at runtime. The runtime adapter must consume these artifacts
+from explicit paths; it must not download `@latest` components during a
+reproducible build.
+
+The Linux source build recipe is `scripts/build-libkrun-linux.sh`. It checks
+the manifest-pinned libkrun/libkrunfw commits, the Linux kernel archive digest,
+Rust `1.90.0`, and GCC `13.3.0`, then installs the libraries and the raw
+`nerdbox-kernel-arm64` image required by the pinned shim. Build metadata records
+the kernel image hash as well as library hashes, and the prefix verifier rejects
+missing or changed artifacts. Set `LIBKRUN_PREFIX` to an empty absolute
+directory; the script refuses to overwrite a non-empty prefix. Source checkouts
+are always cloned into temporary build trees and removed after the build.
+`scripts/verify-libkrun-linux-prefix.sh` detects
+post-build file drift against that prefix metadata. Since the metadata is
+stored beside the libraries and is not signed, this check is not an
+independent provenance or adversarial tamper guarantee.
+
+This recipe pins source identities but does not yet claim bit-for-bit
+reproducibility: the complete build image, compiler/linker and system package
+set are not digest-pinned, and the produced library hashes are not compared to
+an independently published expected digest. Tagged release builds still need
+CI provenance/signing and controlled runtime loader configuration. The local
+task recorded the exact loaded `libkrun.so` from its explicit `LIBKRUN_PATH`.
+The candidate asset-search patch makes that variable a complete search list,
+filters empty/relative entries, and removes `PATH` fallback; absent an explicit
+list, only fixed system directories are searched. This prevents a writable
+`PATH` directory or current-directory entry from shadowing the verified prefix.
+It is not a runtime digest/signature check: the host must protect the explicit
+bundle and default directories from untrusted writes. The nerdbox v0.2.5 Docker recipe builds libkrun v1.19.0 and mutates
+its `imago` Cargo dependency, so it does not validate this manifest's libkrun
+v1.19.6 selection.
+
+A clean-room check in Ubuntu 24.04.5 ARM64 with Rust 1.90.0 and GCC 13.3.0
+built two empty prefixes from the pinned commits and kernel archive. The
+recipe remaps its random temporary checkout to `/usr/src` in Rust debug paths;
+the libkrun, libkrunfw, kernel image, and generated build-info hashes matched
+byte-for-byte. This is same-environment repeatability evidence, not a pinned
+build-image claim or independent provenance. The prefix-specific pkg-config
+file intentionally embeds the caller's installation prefix and is not
+byte-identical across different prefixes.
+
+The project shim recipe also applies a small compatibility patch that treats
+`krun_get_shutdown_eventfd` as optional outside macOS. libkrun v1.19.6 only
+exports that symbol on macOS/aarch64, while the pinned nerdbox loader otherwise
+requires every declared symbol during Linux library loading. Linux never calls
+this function in the pinned source. Keep the patch and its manifest digest in
+sync, and retain a Linux runtime regression proving the library loads and a
+KVM task can boot.
 
 The Windows branch follows Docker's documented platform contract (Windows 11
 x64 with Windows Hypervisor Platform), while using QEMU WHPX as the open VMM.

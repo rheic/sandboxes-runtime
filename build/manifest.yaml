@@ -3,6 +3,14 @@ platforms:
   - darwin/arm64
   - linux/arm64
 components:
+  go-toolchain-linux-arm64:
+    version: "1.27.4"
+    source: https://go.dev/dl/go1.27.4.linux-arm64.tar.gz
+    sha256: 3392582988a273a87ab5043ee1b2c9c17a2c3c00580bf9326c47a2e0aaaeac92
+  go-toolchain-darwin-arm64:
+    version: "1.27.4"
+    source: https://go.dev/dl/go1.27.4.darwin-arm64.tar.gz
+    sha256: 91a44a2b8a716600ad94a4f143e156116620db8828086a6e3602291be9bd0bb4
   containerd:
     version: "2.4.2"
     source: https://github.com/containerd/containerd
@@ -10,9 +18,27 @@ components:
     version: "0.2.5"
     commit: 28c86e8e16c62a08079531ebe99e24a7bdad3d62
     source: https://github.com/containerd/nerdbox
+  crun:
+    version: "1.30.1"
+    source: https://github.com/containers/crun/releases/download/1.30.1/crun-1.30.1-linux-arm64-disable-systemd
+    sha256: 6ac05ea41343cf91b12832c69f9a2a8c6dc5380032f4c0e02a46cc6aba8804f5
+    signing-key-fingerprint: AF60FCA3CDAA6DEAD157EA3A67E38F7A8BA21772
+  nerdbox-rootfs-base-arm64:
+    version: "0.2.5"
+    source: pinned Linux ARM64 EROFS base generated from the nerdbox commit above
+    sha256: bb7b4ba4df5047d67d0af0ffc9c92b891d8553d4c78a30c14219d079dd003cc3
   libkrun:
     version: "1.19.6"
+    commit: 227b2de6ed323fe180e02f871c5f325a90c13cc2
     source: https://github.com/containers/libkrun
+  libkrunfw:
+    version: "5.6.2"
+    commit: f14ac64ca8a04c6c9d76cac1c61ee050809c88c9
+    source: https://github.com/containers/libkrunfw
+  linux-kernel-arm64:
+    version: "6.12.109"
+    source: https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.109.tar.xz
+    sha256: 5484e552a334e15019f4aeba89e5b58f04651cf2f4e24e04de9f152f1c38e3fa
   gvisor-tap-vsock:
     commit: 0b0819c174331f5b86d96db3ab7aad7dd126078e
     source: https://github.com/containers/gvisor-tap-vsock
@@ -23,11 +49,31 @@ components:
 patches:
   nerdbox-gpt-threshold:
     file: patches/nerdbox-gpt-threshold.patch
-    sha256: 251b1af0c07b915cf3b55f6440b73dbf1337dd371f4926b625ab4399df1fc091
+    sha256: 3df47b5267861607b37d9a1f1baf3b5b2c6e36abdd62b1f864fcf75deb9e2de2
+    status: experimental
+  nerdbox-linux-host-mount-cleanup:
+    file: patches/nerdbox-linux-host-mount-cleanup.patch
+    sha256: 33f33178bb4a0b52a6013fba9c2beee3a56f6aa5ffab6162e74b87862ba80b7b
     status: experimental
   nerdbox-proxy-channel:
     file: patches/nerdbox-proxy-channel.patch
     sha256: c6324f4b0ff03c919740db024d5527a70c0eec3b98926484838c672271379f13
+    status: experimental
+  nerdbox-linux-shutdown-symbol:
+    file: patches/nerdbox-linux-shutdown-symbol.patch
+    sha256: 787a9680616d1e1eedcc97899c87d3776ba97e89c63ca7f00ead4026069d70eb
+    status: experimental
+  nerdbox-runtime-asset-search:
+    file: patches/nerdbox-runtime-asset-search.patch
+    sha256: 1b02d5464837947949ccae24a62e9c5c625e5f1868650dc3f20778efb83ee79f
+    status: experimental
+  nerdbox-ttrpc-close-once:
+    file: patches/nerdbox-ttrpc-close-once.patch
+    sha256: 4bcbb9dc9eea8c032d90cfbf5fd286ab7e21071872e9defa32abb766071da5c4
+    status: experimental
+  nerdbox-network-route-only:
+    file: patches/nerdbox-network-route-only.patch
+    sha256: 521a3370d53515be4f07404b67124e57a387fb62b6c97368d1053fc15ba3f569
     status: experimental
   gvproxy-egress-policy:
     file: patches/gvproxy-egress-policy-v2.patch

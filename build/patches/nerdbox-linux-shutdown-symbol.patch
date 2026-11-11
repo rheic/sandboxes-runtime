@@ -1,0 +1,17 @@
+diff --git a/internal/vm/libkrun/krun.go b/internal/vm/libkrun/krun.go
+index ef68e7d..30773e4 100644
+--- a/internal/vm/libkrun/krun.go
++++ b/internal/vm/libkrun/krun.go
+@@ -345,6 +345,12 @@ func openLibkrun(path string) (_ *libkrun, _ uintptr, retErr error) {
+ 	ik := reflect.Indirect(reflect.ValueOf(&k))
+ 	for i := 0; i < ik.NumField(); i++ {
+ 		cName := ik.Type().Field(i).Tag.Get("C")
++		// krun_get_shutdown_eventfd is only exported by the macOS/aarch64
++		// backend. Nerdbox does not call it on other hosts, so do not require
++		// this optional symbol while loading Linux libkrun builds.
++		if cName == "krun_get_shutdown_eventfd" && runtime.GOOS != "darwin" {
++			continue
++		}
+ 		fn := ik.Field(i).Addr().Interface()
+ 		registerLibFunc(fn, f, cName)
+ 	}

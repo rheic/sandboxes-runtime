@@ -1,0 +1,111 @@
+diff --git a/internal/vm/libkrun/instance.go b/internal/vm/libkrun/instance.go
+index a38eed8..669628f 100644
+--- a/internal/vm/libkrun/instance.go
++++ b/internal/vm/libkrun/instance.go
+@@ -479,21 +479,11 @@ func (v *vmInstance) Shutdown(ctx context.Context) error {
+ 	}
+ 
+ 	// Close the TTRPC client so in-flight RPCs fail fast and its background
+-	// goroutines are stopped before we tear down the connection underneath.
+-	if v.client != nil {
+-		v.client.Close()
+-		v.client = nil
+-	}
+-
+-	// Close the underlying TTRPC net.Conn to vminitd. This must happen
+-	// before krun_free_ctx to avoid leaving file handles open, which would
+-	// prevent containerd from cleaning up the bundle directory.
+-	if v.conn != nil {
+-		if err := v.conn.Close(); err != nil {
+-			log.G(ctx).WithError(err).Warn("failed to close TTRPC connection")
+-		}
+-		v.conn = nil
+-	}
++	// goroutines are stopped. Client.Close also closes the underlying net.Conn.
++	// Close the raw connection only when client creation did not complete.
++	closeTTRPCConnection(ctx, v.client, v.conn)
++	v.client = nil
++	v.conn = nil
+ 
+ 	// Stop the VM. krun_free_ctx joins all VM threads (vCPU, virtio workers)
+ 	// on most platforms. On Windows WHP it initiates the stop but may return
+@@ -513,6 +503,21 @@ func (v *vmInstance) Shutdown(ctx context.Context) error {
+ 	return nil
+ }
+ 
++func closeTTRPCConnection(ctx context.Context, client *ttrpc.Client, conn net.Conn) {
++	if client != nil {
++		if err := client.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
++			log.G(ctx).WithError(err).Warn("failed to close TTRPC connection")
++		}
++		return
++	}
++	if conn == nil {
++		return
++	}
++	if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
++		log.G(ctx).WithError(err).Warn("failed to close TTRPC connection")
++	}
++}
++
+ func kernelArch() string {
+ 	switch runtime.GOARCH {
+ 	case "amd64":
+diff --git a/internal/vm/libkrun/krun_test.go b/internal/vm/libkrun/krun_test.go
+index c91fca3..e527c34 100644
+--- a/internal/vm/libkrun/krun_test.go
++++ b/internal/vm/libkrun/krun_test.go
+@@ -17,9 +17,53 @@
+ package libkrun
+ 
+ import (
++	"context"
++	"net"
++	"sync/atomic"
+ 	"testing"
++	"time"
++
++	"github.com/containerd/ttrpc"
+ )
+ 
++type closeCountingConn struct {
++	net.Conn
++	closeCalls atomic.Int32
++}
++
++func (c *closeCountingConn) Close() error {
++	c.closeCalls.Add(1)
++	return c.Conn.Close()
++}
++
++func TestCloseTTRPCConnectionClosesClientOwnedConnOnce(t *testing.T) {
++	clientConn, peerConn := net.Pipe()
++	t.Cleanup(func() { _ = peerConn.Close() })
++	conn := &closeCountingConn{Conn: clientConn}
++	client := ttrpc.NewClient(conn)
++	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++	defer cancel()
++
++	closeTTRPCConnection(ctx, client, conn)
++	if err := client.UserOnCloseWait(ctx); err != nil {
++		t.Fatalf("wait for TTRPC client close: %v", err)
++	}
++	if got := conn.closeCalls.Load(); got != 1 {
++		t.Fatalf("underlying connection close calls = %d, want 1", got)
++	}
++}
++
++func TestCloseTTRPCConnectionClosesRawConnWhenClientUnavailable(t *testing.T) {
++	clientConn, peerConn := net.Pipe()
++	t.Cleanup(func() { _ = peerConn.Close() })
++	conn := &closeCountingConn{Conn: clientConn}
++
++	closeTTRPCConnection(context.Background(), nil, conn)
++	if got := conn.closeCalls.Load(); got != 1 {
++		t.Fatalf("underlying connection close calls = %d, want 1", got)
++	}
++}
++
+ // TestAddVirtiofs verifies that AddVirtiofs forwards the readonly flag to
+ // krun_add_virtiofs3.
+ func TestAddVirtiofs(t *testing.T) {
