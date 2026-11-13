@@ -27,6 +27,15 @@ adapter. The manifest is authoritative; the patches are checked by the
 
 ## Patches
 
+- `patches/containerd-bundle-remove-no-xdev.patch` — Linux bundle deletion
+  uses descriptor-relative `openat2(RESOLVE_NO_XDEV)` traversal and refuses
+  to remove a tree containing a mounted descendant. Atomic rename and rollback
+  are descriptor-anchored with `renameat2(RENAME_NOREPLACE)` so failed cleanup
+  can be retried without overwriting a collision. This is experimental: it has
+  targeted Ubuntu 24.04 ARM64 VM evidence, but no native Linux/rootless or
+  concurrent same-UID mount-race acceptance. The patched daemon is not yet the
+  default installed artifact.
+
 The gvproxy patch is experimental until matching integration and security
 tests are recorded in the plan:
 
@@ -178,7 +187,15 @@ The containerd process must find the patched shim on PATH before the stock
 `containerd-shim-nerdbox-v1`; Rheic does not modify an existing containerd
 installation. `scripts/build-nerdbox-shim.sh` builds and signs it.
 
-Both native build scripts verify the source checkout's exact manifest commit
+Build the pinned patched Linux/ARM64 containerd and `ctr` from a clean
+containerd v2.4.2 checkout with `scripts/build-containerd-linux-arm64.sh`.
+Set `CONTAINERD_SRC` to the checkout and `OUT_DIR` to a new output directory.
+The script checks the exact manifest commit twice, applies the manifest-hashed
+patch and prints artifact SHA-256 values. Treat these as unsigned engineering
+artifacts until release signing, independent review, and managed-daemon
+consumption of the exact digests are implemented.
+
+The native build scripts verify the source checkout's exact manifest commit
 and reject tracked changes, untracked files, and ignored files before applying
 patches. Go builds use `-trimpath`, disable VCS stamping, and clear the Go
 build ID so independent build directories do not affect the unsigned payload

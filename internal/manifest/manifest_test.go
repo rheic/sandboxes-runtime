@@ -98,8 +98,9 @@ func TestNativeBuildScriptsUseManifestCommits(t *testing.T) {
 		t.Fatal(err)
 	}
 	for script, component := range map[string]string{
-		"scripts/build-nerdbox-shim.sh": "nerdbox",
-		"scripts/build-gvproxy.sh":      "gvisor-tap-vsock",
+		"scripts/build-containerd-linux-arm64.sh": "containerd",
+		"scripts/build-nerdbox-shim.sh":           "nerdbox",
+		"scripts/build-gvproxy.sh":                "gvisor-tap-vsock",
 	} {
 		commit := manifest.Components[component].Commit
 		if commit == "" {

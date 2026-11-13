@@ -1,0 +1,851 @@
+diff --git a/core/runtime/v2/bundle.go b/core/runtime/v2/bundle.go
+index 0987df6..abdeb49 100644
+--- a/core/runtime/v2/bundle.go
++++ b/core/runtime/v2/bundle.go
+@@ -172,13 +172,5 @@ func (b *Bundle) Delete() error {
+ 
+ // atomicDelete renames the path to a hidden file before removal
+ func atomicDelete(path string) error {
+-	// create a hidden dir for an atomic removal
+-	atomicPath := filepath.Join(filepath.Dir(path), fmt.Sprintf(".%s", filepath.Base(path)))
+-	if err := os.Rename(path, atomicPath); err != nil {
+-		if os.IsNotExist(err) {
+-			return nil
+-		}
+-		return err
+-	}
+-	return os.RemoveAll(atomicPath)
++	return atomicDeleteTree(path)
+ }
+diff --git a/core/runtime/v2/bundle_remove_default.go b/core/runtime/v2/bundle_remove_default.go
+new file mode 100644
+index 0000000..22690c5
+--- /dev/null
++++ b/core/runtime/v2/bundle_remove_default.go
+@@ -0,0 +1,49 @@
++//go:build !linux
++
++/*
++   Copyright The containerd Authors.
++
++   Licensed under the Apache License, Version 2.0 (the "License");
++   you may not use this file except in compliance with the License.
++   You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
++*/
++
++package v2
++
++import (
++	"fmt"
++	"os"
++	"path/filepath"
++)
++
++// removeTree removes the directory tree rooted at path. On non-Linux
++// platforms the previous os.RemoveAll behavior is kept unchanged.
++func removeTree(path string) error {
++	return os.RemoveAll(path)
++}
++
++// atomicDeleteTree preserves the previous non-Linux atomic rename behavior.
++func atomicDeleteTree(path string) error {
++	atomicPath := filepath.Join(filepath.Dir(path), "."+filepath.Base(path))
++	if err := os.Rename(path, atomicPath); err != nil {
++		if os.IsNotExist(err) {
++			return nil
++		}
++		return err
++	}
++	if err := removeTree(atomicPath); err != nil {
++		if restoreErr := os.Rename(atomicPath, path); restoreErr != nil {
++			return fmt.Errorf("failed to restore bundle from %q to %q after cleanup failure: %w", atomicPath, path, restoreErr)
++		}
++		return err
++	}
++	return nil
++}
+diff --git a/core/runtime/v2/bundle_remove_linux.go b/core/runtime/v2/bundle_remove_linux.go
+new file mode 100644
+index 0000000..f073a09
+--- /dev/null
++++ b/core/runtime/v2/bundle_remove_linux.go
+@@ -0,0 +1,290 @@
++//go:build linux
++
++/*
++   Copyright The containerd Authors.
++
++   Licensed under the Apache License, Version 2.0 (the "License");
++   you may not use this file except in compliance with the License.
++   You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
++*/
++
++package v2
++
++import (
++	"errors"
++	"fmt"
++	"io"
++	"path/filepath"
++
++	"golang.org/x/sys/unix"
++)
++
++// resolveConfine are the openat2(2) RESOLVE_* flags used to keep recursive
++// bundle removal descriptor-relative and confined to the target tree:
++// path resolution never leaves the directory file descriptor, symlinks and
++// magic links are never followed, and resolution never crosses into a
++// different mount.
++const resolveConfine = unix.RESOLVE_BENEATH |
++	unix.RESOLVE_NO_SYMLINKS |
++	unix.RESOLVE_NO_MAGICLINKS |
++	unix.RESOLVE_NO_XDEV
++
++var (
++	// errCrossMount is returned when the tree being removed contains a
++	// mountpoint. Removal fails closed: the mounted filesystem's contents
++	// are preserved and the caller must unmount first.
++	errCrossMount = errors.New("refusing to descend across mountpoint")
++
++	// errOpenat2Unsupported is returned when the running kernel does not
++	// support openat2(2) with the required resolve flags. Removal fails
++	// closed instead of falling back to a path-based recursive delete.
++	errOpenat2Unsupported = errors.New("openat2(2) resolve flags unsupported by kernel")
++)
++
++// direntBufSize is the getdents64(2) batch size used when walking a
++// directory. It is bounded by design; larger directories are read in
++// multiple batches.
++const direntBufSize = 8192
++
++// removeTree removes the directory tree rooted at path.
++//
++// Every step of the traversal is resolved relative to an already-open
++// directory file descriptor via openat2(2) with resolveConfine, so the walk
++// cannot escape the tree through a symlink or magic link and cannot descend
++// across a mountpoint. If a descendant mount exists, or the kernel lacks
++// openat2(2) resolve-flag support, removeTree fails closed with an error and
++// leaves the mounted filesystem's contents intact.
++//
++// A missing path is not an error (matching os.RemoveAll behavior).
++func removeTree(path string) error {
++	pfd, err := openDir(filepath.Dir(path))
++	if err != nil {
++		return err
++	}
++	defer unix.Close(pfd)
++
++	return removeTreeAt(pfd, filepath.Base(path), path)
++}
++
++// atomicDeleteTree renames path to a hidden sibling and removes it while
++// keeping both names relative to one open parent descriptor. NOREPLACE avoids
++// overwriting stale hidden state or a path recreated during failure recovery.
++func atomicDeleteTree(path string) error {
++	parent := filepath.Dir(path)
++	pfd, err := openDir(parent)
++	if err != nil {
++		return err
++	}
++	defer unix.Close(pfd)
++
++	name := filepath.Base(path)
++	atomicName := "." + name
++	err = retryEINTR(func() error {
++		return unix.Renameat2(pfd, name, pfd, atomicName, unix.RENAME_NOREPLACE)
++	})
++	if errors.Is(err, unix.ENOENT) {
++		return nil
++	}
++	if err != nil {
++		return err
++	}
++
++	display := filepath.Join(parent, atomicName)
++	if err := removeTreeAt(pfd, atomicName, display); err != nil {
++		restoreErr := retryEINTR(func() error {
++			return unix.Renameat2(pfd, atomicName, pfd, name, unix.RENAME_NOREPLACE)
++		})
++		if restoreErr != nil {
++			return errors.Join(err, fmt.Errorf("failed to restore bundle from %q to %q after cleanup failure: %w", display, path, restoreErr))
++		}
++		return err
++	}
++	return nil
++}
++
++// removeTreeAt removes a regular file, symlink, or directory entry beneath
++// parentFD without following symlinks or traversing mountpoints.
++func removeTreeAt(parentFD int, name, display string) error {
++	var st unix.Stat_t
++	if err := retryEINTR(func() error {
++		return unix.Fstatat(parentFD, name, &st, unix.AT_SYMLINK_NOFOLLOW)
++	}); err != nil {
++		if errors.Is(err, unix.ENOENT) {
++			return nil
++		}
++		return fmt.Errorf("failed to stat %q: %w", display, err)
++	}
++	if st.Mode&unix.S_IFMT == unix.S_IFDIR {
++		return removeDirBeneath(parentFD, name, display)
++	}
++	return removeEntry(parentFD, name, 0, display)
++}
++
++// openDir opens dir as a directory file descriptor.
++func openDir(dir string) (int, error) {
++	var fd int
++	err := retryEINTR(func() error {
++		var err error
++		fd, err = unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
++		return err
++	})
++	if err != nil {
++		return -1, fmt.Errorf("failed to open directory %q: %w", dir, err)
++	}
++	return fd, nil
++}
++
++// openBeneath opens name strictly beneath dirfd, confined by resolveConfine.
++// Mountpoints surface as EXDEV and are reported as errCrossMount; kernels
++// without openat2(2) or resolve-flag support surface as ENOSYS/EINVAL and
++// are reported as errOpenat2Unsupported. Other errors are returned unwrapped
++// so callers can inspect the raw errno.
++func openBeneath(dirfd int, name string) (int, error) {
++	var fd int
++	err := retryEINTR(func() error {
++		var err error
++		fd, err = unix.Openat2(dirfd, name, &unix.OpenHow{
++			Flags:   unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC,
++			Resolve: resolveConfine,
++		})
++		return err
++	})
++	switch {
++	case err == nil:
++		return fd, nil
++	case errors.Is(err, unix.EXDEV):
++		return -1, fmt.Errorf("%q is a mountpoint (or resolution crossed one): %w: %w", name, err, errCrossMount)
++	case errors.Is(err, unix.ENOSYS), errors.Is(err, unix.EINVAL):
++		return -1, fmt.Errorf("cannot verify removal confinement for %q: %w: %w", name, err, errOpenat2Unsupported)
++	default:
++		return -1, err
++	}
++}
++
++// removeDirBeneath recursively removes the directory name beneath dirfd,
++// displaying path prefix display in errors.
++func removeDirBeneath(dirfd int, name, display string) error {
++	cfd, err := openBeneath(dirfd, name)
++	if err != nil {
++		if errors.Is(err, unix.ENOENT) {
++			return nil
++		}
++		return fmt.Errorf("failed to open %q: %w", display, err)
++	}
++	defer unix.Close(cfd)
++
++	// The final unlinkat may race with entries appearing after the last
++	// getdents batch (or being missed due to offset reuse). Rescan a
++	// bounded number of times from the start of the directory before
++	// failing closed.
++	const maxScans = 4
++	for scan := range maxScans {
++		if err := drainDir(cfd, display); err != nil {
++			return err
++		}
++		err := retryEINTR(func() error {
++			return unix.Unlinkat(dirfd, name, unix.AT_REMOVEDIR)
++		})
++		switch {
++		case err == nil, errors.Is(err, unix.ENOENT):
++			return nil
++		case errors.Is(err, unix.ENOTEMPTY) && scan+1 < maxScans:
++			if seekErr := retryEINTR(func() error {
++				_, err := unix.Seek(cfd, 0, io.SeekStart)
++				return err
++			}); seekErr != nil {
++				return fmt.Errorf("failed to rewind directory %q: %w", display, seekErr)
++			}
++		default:
++			return fmt.Errorf("failed to remove directory %q: %w", display, err)
++		}
++	}
++	return fmt.Errorf("failed to remove directory %q: contents keep reappearing, giving up", display)
++}
++
++// drainDir removes every child entry visible from dirfd.
++func drainDir(dirfd int, display string) error {
++	buf := make([]byte, direntBufSize)
++	for {
++		var n int
++		err := retryEINTR(func() error {
++			var err error
++			n, err = unix.ReadDirent(dirfd, buf)
++			return err
++		})
++		if err != nil {
++			return fmt.Errorf("failed to read directory %q: %w", display, err)
++		}
++		if n == 0 {
++			return nil
++		}
++		for off := 0; off < n; {
++			consumed, _, names := unix.ParseDirent(buf[off:n], -1, nil)
++			if consumed == 0 {
++				break
++			}
++			off += consumed
++			for _, name := range names {
++				if err := removeChild(dirfd, display, string(name)); err != nil {
++					return err
++				}
++			}
++		}
++	}
++}
++
++// removeChild removes one entry of dirfd, recursing into directories
++// through a confined openat2 descriptor. Symlinks are unlinked, never
++// followed or opened.
++func removeChild(dirfd int, display, name string) error {
++	child := filepath.Join(display, name)
++
++	var st unix.Stat_t
++	err := retryEINTR(func() error {
++		return unix.Fstatat(dirfd, name, &st, unix.AT_SYMLINK_NOFOLLOW)
++	})
++	if err != nil {
++		if errors.Is(err, unix.ENOENT) {
++			return nil
++		}
++		return fmt.Errorf("failed to stat %q: %w", child, err)
++	}
++	if st.Mode&unix.S_IFMT == unix.S_IFDIR {
++		return removeDirBeneath(dirfd, name, child)
++	}
++	return removeEntry(dirfd, name, 0, child)
++}
++
++func removeEntry(dirfd int, name string, flags int, display string) error {
++	err := retryEINTR(func() error {
++		return unix.Unlinkat(dirfd, name, flags)
++	})
++	switch {
++	case err == nil, errors.Is(err, unix.ENOENT):
++		return nil
++	case errors.Is(err, unix.EISDIR) && flags == 0:
++		// Became a directory mid-race: let the caller's confinement
++		// checks handle it rather than unlinking blindly.
++		return removeDirBeneath(dirfd, name, display)
++	default:
++		return fmt.Errorf("failed to remove %q: %w", display, err)
++	}
++}
++
++// retryEINTR runs fn until it finishes with an error other than EINTR.
++func retryEINTR(fn func() error) error {
++	for {
++		err := fn()
++		if !errors.Is(err, unix.EINTR) {
++			return err
++		}
++	}
++}
+diff --git a/core/runtime/v2/bundle_remove_linux_test.go b/core/runtime/v2/bundle_remove_linux_test.go
+new file mode 100644
+index 0000000..32093d3
+--- /dev/null
++++ b/core/runtime/v2/bundle_remove_linux_test.go
+@@ -0,0 +1,171 @@
++//go:build linux
++
++/*
++   Copyright The containerd Authors.
++
++   Licensed under the Apache License, Version 2.0 (the "License");
++   you may not use this file except in compliance with the License.
++   You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
++*/
++
++package v2
++
++import (
++	"crypto/rand"
++	"encoding/hex"
++	"errors"
++	"os"
++	"path/filepath"
++	"testing"
++
++	"github.com/stretchr/testify/require"
++	"golang.org/x/sys/unix"
++)
++
++// uniqueSuffix returns a short unique suffix for test resources.
++func uniqueSuffix(t *testing.T) string {
++	t.Helper()
++	var b [8]byte
++	_, err := rand.Read(b[:])
++	require.NoError(t, err)
++	return hex.EncodeToString(b[:])
++}
++
++// requireConfinedRemoval skips the test when the running kernel cannot
++// support removeTree's openat2(2) confinement.
++func requireConfinedRemoval(t *testing.T) {
++	t.Helper()
++	if ok, reason := openat2ConfineSupported(t.TempDir()); !ok {
++		t.Skipf("skipping: kernel lacks required openat2(2) primitive: %v", reason)
++	}
++}
++
++// openat2ConfineSupported probes whether the kernel supports openat2(2)
++// with the resolve flags used by removeTree. A missing syscall or
++// unsupported flags are reported as unsupported, along with the errno.
++func openat2ConfineSupported(dir string) (bool, error) {
++	fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
++	if err != nil {
++		return false, err
++	}
++	defer unix.Close(fd)
++
++	_, err = unix.Openat2(fd, "rheic-confine-probe-missing", &unix.OpenHow{
++		Flags:   unix.O_PATH | unix.O_CLOEXEC,
++		Resolve: resolveConfine,
++	})
++	switch {
++	case err == nil:
++		return false, errors.New("unexpected success opening nonexistent path")
++	case errors.Is(err, unix.ENOENT):
++		return true, nil
++	default:
++		return false, err
++	}
++}
++
++// makeBundleTree creates a bundle-like directory tree: a nested directory
++// layout, regular files, a symlink pointing outside the tree and a
++// self-referential symlink. It returns the bundle path, the external work
++// directory and the marker file left outside the bundle.
++func makeBundleTree(t *testing.T, name string) (bundle, work, marker string) {
++	t.Helper()
++	dir := filepath.Join(t.TempDir(), name)
++	bundle = filepath.Join(dir, "bundle-"+uniqueSuffix(t))
++	work = filepath.Join(dir, "work-"+uniqueSuffix(t))
++
++	require.NoError(t, os.MkdirAll(filepath.Join(bundle, "rootfs", "nested"), 0o700))
++	require.NoError(t, os.MkdirAll(filepath.Join(work, "keep"), 0o700))
++	require.NoError(t, os.WriteFile(filepath.Join(bundle, "config.json"), []byte("{}"), 0o600))
++	require.NoError(t, os.WriteFile(filepath.Join(bundle, "rootfs", "nested", "file"), []byte("x"), 0o600))
++	marker = filepath.Join(work, "keep", "marker")
++	require.NoError(t, os.WriteFile(marker, []byte("PRESERVE"), 0o600))
++	// The real bundle layout contains a work symlink pointing at the
++	// external work directory; add an escaping symlink and a cycle too.
++	require.NoError(t, os.Symlink(work, filepath.Join(bundle, "work")))
++	require.NoError(t, os.Symlink(filepath.Join(work, "keep"), filepath.Join(bundle, "rootfs", "escape")))
++	require.NoError(t, os.Symlink(bundle, filepath.Join(bundle, "self")))
++	return bundle, work, marker
++}
++
++func TestRemoveTreeBundleLikeTree(t *testing.T) {
++	requireConfinedRemoval(t)
++	bundle, work, marker := makeBundleTree(t, "plain")
++
++	require.NoError(t, removeTree(bundle))
++
++	if _, err := os.Lstat(bundle); !os.IsNotExist(err) {
++		t.Fatalf("bundle path should be gone, got %v", err)
++	}
++	// Symlinks must have been unlinked, not followed: everything outside
++	// the bundle tree must still be intact.
++	data, err := os.ReadFile(marker)
++	require.NoError(t, err)
++	require.Equal(t, "PRESERVE", string(data))
++	if _, err := os.Lstat(filepath.Join(work, "keep")); err != nil {
++		t.Fatalf("external work tree must be preserved: %v", err)
++	}
++}
++
++func TestAtomicDeleteRemovesHiddenTree(t *testing.T) {
++	requireConfinedRemoval(t)
++	bundle, _, marker := makeBundleTree(t, "atomic")
++
++	require.NoError(t, atomicDelete(bundle))
++
++	if _, err := os.Lstat(bundle); !os.IsNotExist(err) {
++		t.Fatalf("bundle path should be gone, got %v", err)
++	}
++	hidden := filepath.Join(filepath.Dir(bundle), "."+filepath.Base(bundle))
++	if _, err := os.Lstat(hidden); !os.IsNotExist(err) {
++		t.Fatalf("hidden atomic path should be gone, got %v", err)
++	}
++	if _, err := os.Stat(marker); err != nil {
++		t.Fatalf("external marker must be preserved: %v", err)
++	}
++}
++
++func TestAtomicDeletePreservesExistingHiddenPath(t *testing.T) {
++	requireConfinedRemoval(t)
++	dir := t.TempDir()
++	bundle := filepath.Join(dir, "bundle-"+uniqueSuffix(t))
++	hidden := filepath.Join(dir, "."+filepath.Base(bundle))
++	require.NoError(t, os.Mkdir(bundle, 0o700))
++	require.NoError(t, os.WriteFile(filepath.Join(bundle, "original"), []byte("original"), 0o600))
++	require.NoError(t, os.Mkdir(hidden, 0o700))
++	require.NoError(t, os.WriteFile(filepath.Join(hidden, "stale"), []byte("stale"), 0o600))
++
++	require.Error(t, atomicDelete(bundle))
++	original, err := os.ReadFile(filepath.Join(bundle, "original"))
++	require.NoError(t, err)
++	require.Equal(t, "original", string(original))
++	stale, err := os.ReadFile(filepath.Join(hidden, "stale"))
++	require.NoError(t, err)
++	require.Equal(t, "stale", string(stale))
++}
++
++func TestRemoveTreeMissingPath(t *testing.T) {
++	requireConfinedRemoval(t)
++	require.NoError(t, removeTree(filepath.Join(t.TempDir(), "does-not-exist")))
++}
++
++func TestRemoveTreePlainFile(t *testing.T) {
++	requireConfinedRemoval(t)
++	dir := t.TempDir()
++	f := filepath.Join(dir, "file-"+uniqueSuffix(t))
++	require.NoError(t, os.WriteFile(f, []byte("x"), 0o600))
++
++	require.NoError(t, removeTree(f))
++
++	if _, err := os.Lstat(f); !os.IsNotExist(err) {
++		t.Fatalf("file should be gone, got %v", err)
++	}
++}
+diff --git a/core/runtime/v2/bundle_remove_mount_linux_test.go b/core/runtime/v2/bundle_remove_mount_linux_test.go
+new file mode 100644
+index 0000000..26072c6
+--- /dev/null
++++ b/core/runtime/v2/bundle_remove_mount_linux_test.go
+@@ -0,0 +1,298 @@
++//go:build linux
++
++/*
++   Copyright The containerd Authors.
++
++   Licensed under the Apache License, Version 2.0 (the "License");
++   you may not use this file except in compliance with the License.
++   You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
++*/
++
++package v2
++
++import (
++	"crypto/rand"
++	"errors"
++	"io/fs"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/stretchr/testify/require"
++	"golang.org/x/sys/unix"
++)
++
++// mountTestEnv gates the privileged bundle-mount integration test. It is
++// opt-in because it requires mount privileges (CAP_SYS_ADMIN).
++const mountTestEnv = "CONTAINERD_TEST_BUNDLE_MOUNT_REMOVAL"
++
++// TestRemoveTreeWithMountedDescendant creates a uniquely named tmpfs mount
++// beneath a uniquely owned bundle directory and proves that cleanup fails
++// closed: Bundle.Delete returns errCrossMount, and the tmpfs marker data and
++// the mount itself survive untouched. The test then unmounts exactly the
++// mount it created (matched by unique source label and parent directory)
++// and verifies removal succeeds.
++//
++// It skips when the environment is not opted in, when mount privileges are
++// unavailable, or when the kernel lacks the openat2(2) primitive.
++func TestRemoveTreeWithMountedDescendant(t *testing.T) {
++	if os.Getenv(mountTestEnv) != "1" {
++		t.Skipf("opt-in integration test: set %s=1 to run", mountTestEnv)
++	}
++	if os.Geteuid() != 0 {
++		t.Skip("skipping: mount privileges unavailable (requires root/CAP_SYS_ADMIN)")
++	}
++	// Resolve any symlinks in the temp root so paths can be compared
++	// against /proc/self/mountinfo, which reports canonical paths.
++	dir, err := filepath.EvalSymlinks(t.TempDir())
++	require.NoError(t, err)
++	requireConfinedRemoval(t)
++
++	bundleID := "rheic-mount-bundle-" + uniqueSuffix(t)
++	label := "rheic-tmpfs-" + uniqueSuffix(t)
++	bundle := filepath.Join(dir, bundleID)
++	mountAt := filepath.Join(bundle, "mnt")
++
++	require.NoError(t, os.MkdirAll(filepath.Join(bundle, "rootfs"), 0o700))
++	require.NoError(t, os.MkdirAll(mountAt, 0o700))
++	require.NoError(t, os.WriteFile(filepath.Join(bundle, "config.json"), []byte("{}"), 0o600))
++
++	// Uniquely owned tree: hand the whole bundle to a uid:gid that
++	// belongs to nothing else on the host, so anything this run creates
++	// (and anything that survives a failed cleanup) is attributable to
++	// this test alone.
++	uid, gid := uniqueOwner(t)
++	require.NoError(t, chownTree(bundle, uid, gid))
++
++	if err := unix.Mount(label, mountAt, "tmpfs", 0, "size=64k"); err != nil {
++		if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENODEV) {
++			t.Skipf("skipping: mount privileges unavailable: %v", err)
++		}
++		t.Fatalf("failed to mount test tmpfs: %v", err)
++	}
++	// Ownership guarantee: cleanup only ever unmounts entries whose
++	// source label is ours and whose mountpoint is beneath our temp dir.
++	t.Cleanup(func() {
++		for _, mp := range ownedMounts(t, dir, label) {
++			detachOwnedMount(t, mp)
++		}
++	})
++
++	marker := filepath.Join(mountAt, "marker")
++	require.NoError(t, os.WriteFile(marker, []byte("PRESERVE"), 0o600))
++	require.NoError(t, unix.Lchown(marker, uid, gid))
++	require.Contains(t, ownedMounts(t, dir, label), mountAt)
++
++	// Exercise the production cleanup path: Bundle.Delete removes rootfs,
++	// then reaches the sibling mount through atomicDelete.
++	ownedBundle := &Bundle{Path: bundle}
++	err = ownedBundle.Delete()
++	require.Error(t, err)
++	require.ErrorIs(t, err, errCrossMount)
++
++	// The cleanup rollback restores the original bundle name, keeping the
++	// task bundle available for a retry after the mount is safely unmounted.
++	atomicPath := filepath.Join(dir, "."+bundleID)
++	require.DirExists(t, bundle)
++	if _, err := os.Lstat(atomicPath); !os.IsNotExist(err) {
++		t.Fatalf("hidden atomic path should have been restored, got %v", err)
++	}
++	mountedMarker := filepath.Join(bundle, "mnt", "marker")
++
++	// Mounted filesystem contents must be intact.
++	data, err := os.ReadFile(mountedMarker)
++	require.NoError(t, err, "marker inside mounted tmpfs must be preserved")
++	require.Equal(t, "PRESERVE", string(data))
++
++	// The marker must still carry this test run's unique ownership:
++	// nothing on the mounted filesystem was rewritten or replaced.
++	var st unix.Stat_t
++	require.NoError(t, unix.Lstat(mountedMarker, &st))
++	require.Equal(t, uint32(uid), st.Uid, "marker owner uid must be untouched")
++	require.Equal(t, uint32(gid), st.Gid, "marker owner gid must be untouched")
++
++	// The mount must still be present.
++	mounts := ownedMounts(t, dir, label)
++	require.Contains(t, mounts, mountAt)
++
++	// Owned unmount, then the confined removal must now succeed.
++	detachOwnedMount(t, mountAt)
++	require.NotContains(t, ownedMounts(t, dir, label), mountAt)
++	if _, err := os.Stat(mountedMarker); !os.IsNotExist(err) {
++		t.Fatalf("tmpfs marker should be gone after unmount, got %v", err)
++	}
++
++	require.NoError(t, ownedBundle.Delete())
++	if _, err := os.Lstat(bundle); !os.IsNotExist(err) {
++		t.Fatalf("bundle path should be gone, got %v", err)
++	}
++}
++
++// uniqueOwner returns a uid/gid pair from a high, random range that is
++// extremely unlikely to belong to any real account on the host, so files
++// chowned to it are uniquely owned by one test run.
++func uniqueOwner(t *testing.T) (uid, gid int) {
++	t.Helper()
++	var b [2]byte
++	_, err := rand.Read(b[:])
++	require.NoError(t, err)
++	owner := 40000 + (int(b[0])<<8|int(b[1]))%20000
++	return owner, owner
++}
++
++// chownTree recursively assigns uid/gid to every entry beneath root
++// without following symlinks.
++func chownTree(root string, uid, gid int) error {
++	return filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
++		if err != nil {
++			return err
++		}
++		return unix.Lchown(p, uid, gid)
++	})
++}
++
++// TestAtomicDeleteOrdinaryTree is the positive control for
++// TestRemoveTreeWithMountedDescendant: the same uniquely owned bundle
++// tree, but with no descendant mount. atomicDelete must succeed and the
++// whole tree must be gone, proving the mount test's failure comes from
++// the mount and not from the tree layout or its unique ownership.
++//
++// Unlike the mount test it needs no mount privileges, so it only skips
++// when the environment is not opted in or the kernel lacks openat2(2).
++func TestAtomicDeleteOrdinaryTree(t *testing.T) {
++	if os.Getenv(mountTestEnv) != "1" {
++		t.Skipf("opt-in integration test: set %s=1 to run", mountTestEnv)
++	}
++	requireConfinedRemoval(t)
++
++	dir, err := filepath.EvalSymlinks(t.TempDir())
++	require.NoError(t, err)
++
++	bundleID := "rheic-plain-bundle-" + uniqueSuffix(t)
++	bundle := filepath.Join(dir, bundleID)
++	require.NoError(t, os.MkdirAll(filepath.Join(bundle, "rootfs"), 0o700))
++	require.NoError(t, os.MkdirAll(filepath.Join(bundle, "mnt"), 0o700))
++	require.NoError(t, os.WriteFile(filepath.Join(bundle, "config.json"), []byte("{}"), 0o600))
++	require.NoError(t, os.WriteFile(filepath.Join(bundle, "rootfs", "file"), []byte("x"), 0o600))
++
++	uid, gid := uniqueOwner(t)
++	if os.Geteuid() == 0 {
++		// Unique ownership is a guarantee, not a requirement: an
++		// unprivileged opt-in run still validates the plain-tree path.
++		require.NoError(t, chownTree(bundle, uid, gid))
++		var bst unix.Stat_t
++		require.NoError(t, unix.Lstat(bundle, &bst))
++		require.Equal(t, uint32(uid), bst.Uid, "tree must be uniquely owned")
++	}
++
++	require.NoError(t, atomicDelete(bundle))
++
++	if _, err := os.Lstat(bundle); !os.IsNotExist(err) {
++		t.Fatalf("bundle path should be gone, got %v", err)
++	}
++	atomicPath := filepath.Join(dir, "."+bundleID)
++	if _, err := os.Lstat(atomicPath); !os.IsNotExist(err) {
++		t.Fatalf("hidden atomic path should be gone, got %v", err)
++	}
++}
++
++// ownedMounts returns the mountpoints beneath root whose mountinfo source
++// field equals label exactly. Matching on both constraints restricts any
++// subsequent unmount to resources this test created.
++func ownedMounts(t *testing.T, root, label string) []string {
++	t.Helper()
++	data, err := os.ReadFile("/proc/self/mountinfo")
++	require.NoError(t, err)
++
++	var out []string
++	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
++		fields := strings.Fields(line)
++		sep := -1
++		for i, f := range fields {
++			if f == "-" {
++				sep = i
++				break
++			}
++		}
++		if sep < 5 || sep+2 >= len(fields) {
++			continue
++		}
++		mountpoint, src := fields[4], fields[sep+2]
++		if src != label {
++			continue
++		}
++		mp := unescapeMountPath(mountpoint)
++		if mp == "" {
++			continue
++		}
++		if mp == root || strings.HasPrefix(mp, root+string(os.PathSeparator)) {
++			out = append(out, mp)
++		}
++	}
++	return out
++}
++
++// unescapeMountPath decodes the octal escapes mountinfo uses for
++// whitespace and control characters in mountpoint paths. Paths using
++// escapes we cannot decode are ignored (they can never match paths
++// generated by this test).
++func unescapeMountPath(p string) string {
++	var b strings.Builder
++	for i := 0; i < len(p); i++ {
++		if p[i] != '\\' {
++			b.WriteByte(p[i])
++			continue
++		}
++		if i+2 >= len(p) {
++			return ""
++		}
++		switch p[i+1 : i+3] {
++		case "040":
++			b.WriteByte(' ')
++		case "011":
++			b.WriteByte('\t')
++		case "012":
++			b.WriteByte('\n')
++		case "134":
++			b.WriteByte('\\')
++		default:
++			return ""
++		}
++		i += 2
++	}
++	return b.String()
++}
++
++// detachOwnedMount unmounts a mountpoint this test created, retrying
++// briefly on EBUSY before falling back to MNT_DETACH.
++func detachOwnedMount(t *testing.T, mountpoint string) {
++	t.Helper()
++	deadline := time.Now().Add(5 * time.Second)
++	var err error
++	for {
++		err = unix.Unmount(mountpoint, unix.UMOUNT_NOFOLLOW)
++		if err == nil || errors.Is(err, unix.EINVAL) || errors.Is(err, unix.ENOENT) {
++			// EINVAL/ENOENT: already gone or not a mountpoint.
++			return
++		}
++		if !errors.Is(err, unix.EBUSY) || !time.Now().Before(deadline) {
++			break
++		}
++		time.Sleep(50 * time.Millisecond)
++	}
++	derr := unix.Unmount(mountpoint, unix.UMOUNT_NOFOLLOW|unix.MNT_DETACH)
++	if derr == nil || errors.Is(derr, unix.EINVAL) || errors.Is(derr, unix.ENOENT) {
++		return
++	}
++	t.Errorf("failed to unmount test resource %q: %v (detach fallback: %v)", mountpoint, err, derr)
++}
