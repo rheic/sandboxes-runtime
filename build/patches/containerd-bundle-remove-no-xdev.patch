@@ -370,10 +370,10 @@ index 0000000..f073a09
 +}
 diff --git a/core/runtime/v2/bundle_remove_linux_test.go b/core/runtime/v2/bundle_remove_linux_test.go
 new file mode 100644
-index 0000000..32093d3
+index 0000000..a557141
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_linux_test.go
-@@ -0,0 +1,171 @@
+@@ -0,0 +1,174 @@
 +//go:build linux
 +
 +/*
@@ -420,7 +420,10 @@ index 0000000..32093d3
 +func requireConfinedRemoval(t *testing.T) {
 +	t.Helper()
 +	if ok, reason := openat2ConfineSupported(t.TempDir()); !ok {
-+		t.Skipf("skipping: kernel lacks required openat2(2) primitive: %v", reason)
++		if errors.Is(reason, unix.ENOSYS) || errors.Is(reason, unix.EINVAL) {
++			t.Skipf("skipping: kernel lacks required openat2(2) primitive: %v", reason)
++		}
++		t.Fatalf("openat2(2) capability probe failed unexpectedly: %v", reason)
 +	}
 +}
 +
