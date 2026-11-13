@@ -550,10 +550,10 @@ index 0000000..a557141
 +}
 diff --git a/core/runtime/v2/bundle_remove_mount_linux_test.go b/core/runtime/v2/bundle_remove_mount_linux_test.go
 new file mode 100644
-index 0000000..26072c6
+index 0000000..92ed9db
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_mount_linux_test.go
-@@ -0,0 +1,298 @@
+@@ -0,0 +1,463 @@
 +//go:build linux
 +
 +/*
@@ -577,6 +577,7 @@ index 0000000..26072c6
 +import (
 +	"crypto/rand"
 +	"errors"
++	"fmt"
 +	"io/fs"
 +	"os"
 +	"path/filepath"
@@ -697,6 +698,170 @@ index 0000000..26072c6
 +// uniqueOwner returns a uid/gid pair from a high, random range that is
 +// extremely unlikely to belong to any real account on the host, so files
 +// chowned to it are uniquely owned by one test run.
++// TestBundleDeleteRejectsMountAddedAfterAtomicRename reproduces a same-UID
++// actor attaching a mount after the bundle has been renamed but before the
++// recursive cleanup reaches that descendant. The mount must be detected,
++// preserved, and the original bundle name restored.
++func TestBundleDeleteRejectsMountAddedAfterAtomicRename(t *testing.T) {
++	if os.Getenv(mountTestEnv) != "1" {
++		t.Skipf("opt-in integration test: set %s=1 to run", mountTestEnv)
++	}
++	if os.Geteuid() != 0 {
++		t.Skip("skipping: mount privileges unavailable (requires root/CAP_SYS_ADMIN)")
++	}
++	requireConfinedRemoval(t)
++	for attempt := 0; attempt < 20; attempt++ {
++		raced, err := tryConcurrentBundleMount(t)
++		if err != nil {
++			t.Fatalf("same-UID concurrent mount attempt %d: %v", attempt+1, err)
++		}
++		if raced {
++			return
++		}
++	}
++	t.Fatal("could not attach an owned mount during atomic bundle cleanup after 20 attempts")
++}
++
++func tryConcurrentBundleMount(t *testing.T) (bool, error) {
++	dir, err := filepath.EvalSymlinks(t.TempDir())
++	if err != nil {
++		return false, err
++	}
++	bundleID := "rheic-mount-race-" + uniqueSuffix(t)
++	label := "rheic-race-tmpfs-" + uniqueSuffix(t)
++	bundle := filepath.Join(dir, bundleID)
++	mountName := "zzzz-race-mount"
++	mountAt := filepath.Join(bundle, mountName)
++	atomicBundle := filepath.Join(dir, "."+bundleID)
++	atomicMount := filepath.Join(atomicBundle, mountName)
++	for _, path := range []string{filepath.Join(bundle, "rootfs"), mountAt} {
++		if err := os.MkdirAll(path, 0o700); err != nil {
++			return false, err
++		}
++	}
++	if err := os.WriteFile(filepath.Join(bundle, "config.json"), []byte("{}"), 0o600); err != nil {
++		return false, err
++	}
++	// Keep the cleanup walk busy after atomic rename so the concurrent
++	// mount attempt lands before traversal reaches the last entry.
++	for i := 0; i < 4096; i++ {
++		name := filepath.Join(bundle, fmt.Sprintf("entry-%05d", i))
++		if err := os.WriteFile(name, []byte("x"), 0o600); err != nil {
++			return false, err
++		}
++	}
++	uid, gid := uniqueOwner(t)
++	if err := chownTree(bundle, uid, gid); err != nil {
++		return false, err
++	}
++
++	ownedBundle := &Bundle{Path: bundle}
++	mounted := make(chan error, 1)
++	ready := make(chan struct{})
++	t.Cleanup(func() {
++		for _, mountpoint := range ownedMounts(t, dir, label) {
++			detachOwnedMount(t, mountpoint)
++		}
++	})
++	go func() {
++		close(ready)
++		deadline := time.Now().Add(10 * time.Second)
++		for time.Now().Before(deadline) {
++			if _, statErr := os.Stat(atomicBundle); statErr == nil {
++				if mountErr := unix.Mount(label, atomicMount, "tmpfs", 0, "size=64k"); mountErr != nil {
++					if errors.Is(mountErr, unix.ENOENT) {
++						mounted <- errBundleRaceWindowMissed
++					} else {
++						mounted <- fmt.Errorf("attach owned race mount after bundle rename: %w", mountErr)
++					}
++					return
++				}
++				marker := filepath.Join(atomicMount, "marker")
++				if writeErr := os.WriteFile(marker, []byte("RACE_PRESERVE"), 0o600); writeErr != nil {
++					mounted <- fmt.Errorf("write owned race marker: %w", writeErr)
++					return
++				}
++				if chownErr := unix.Lchown(marker, uid, gid); chownErr != nil {
++					mounted <- fmt.Errorf("assign unique race marker owner: %w", chownErr)
++					return
++				}
++				mounted <- nil
++				return
++			} else if !os.IsNotExist(statErr) {
++				mounted <- fmt.Errorf("inspect renamed owned bundle: %w", statErr)
++				return
++			}
++			if _, statErr := os.Stat(bundle); os.IsNotExist(statErr) {
++				mounted <- errBundleRaceWindowMissed
++				return
++			}
++			time.Sleep(time.Microsecond)
++		}
++		mounted <- errors.New("timed out waiting for atomic bundle rename")
++	}()
++	<-ready
++	deleteErr := ownedBundle.Delete()
++	mountErr := <-mounted
++	if errors.Is(mountErr, errBundleRaceWindowMissed) && deleteErr == nil {
++		return false, nil
++	}
++	if mountErr != nil {
++		return false, fmt.Errorf("race mount was not attached: %w; bundle delete error: %v", mountErr, deleteErr)
++	}
++	if !errors.Is(deleteErr, errCrossMount) {
++		return false, fmt.Errorf("mounted descendant was not rejected with errCrossMount: %w", deleteErr)
++	}
++	if _, err := os.Stat(bundle); err != nil {
++		return false, fmt.Errorf("failed cleanup did not restore original bundle path: %w", err)
++	}
++	if _, err := os.Lstat(atomicBundle); !os.IsNotExist(err) {
++		return false, fmt.Errorf("hidden bundle path should have been restored, got %v", err)
++	}
++	marker := filepath.Join(mountAt, "marker")
++	data, err := os.ReadFile(marker)
++	if err != nil {
++		return false, fmt.Errorf("read preserved marker: %w", err)
++	}
++	if string(data) != "RACE_PRESERVE" {
++		return false, fmt.Errorf("marker contents changed: %q", data)
++	}
++	var st unix.Stat_t
++	if err := unix.Lstat(marker, &st); err != nil {
++		return false, fmt.Errorf("stat preserved marker: %w", err)
++	}
++	if st.Uid != uint32(uid) || st.Gid != uint32(gid) {
++		return false, fmt.Errorf("marker ownership changed to %d:%d, want %d:%d", st.Uid, st.Gid, uid, gid)
++	}
++	if !containsMount(ownedMounts(t, dir, label), mountAt) {
++		return false, fmt.Errorf("owned mount at %q did not survive failed cleanup", mountAt)
++	}
++
++	for _, mountpoint := range ownedMounts(t, dir, label) {
++		detachOwnedMount(t, mountpoint)
++	}
++	if len(ownedMounts(t, dir, label)) != 0 {
++		return false, errors.New("owned race mount remained after detach")
++	}
++	if err := ownedBundle.Delete(); err != nil {
++		return false, fmt.Errorf("retry bundle cleanup after owned unmount: %w", err)
++	}
++	if _, err := os.Lstat(bundle); !os.IsNotExist(err) {
++		return false, fmt.Errorf("bundle path remained after retry: %v", err)
++	}
++	return true, nil
++}
++
++var errBundleRaceWindowMissed = errors.New("bundle cleanup completed before the race mount could attach")
++
++func containsMount(mounts []string, path string) bool {
++	for _, mount := range mounts {
++		if mount == path {
++			return true
++		}
++	}
++	return false
++}
++
 +func uniqueOwner(t *testing.T) (uid, gid int) {
 +	t.Helper()
 +	var b [2]byte
