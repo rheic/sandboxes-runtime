@@ -5,9 +5,13 @@
 ### Security and limitations
 
 - Add an experimental Linux/ARM64 containerd v2.4.2 build with fail-closed,
-  mount-boundary-aware bundle cleanup. The prototype has rootful Ubuntu ARM64
-  VM controls; native Linux, rootless, concurrent same-UID mount-race,
-  artifact-signing and daemon-installation acceptance remain open.
+  mount-boundary-aware bundle cleanup. It rejects mounts under host-side
+  rootfs/work before mutation, preserves unknown mounts, validates the work
+  symlink against trusted containerd roots, and keeps work data when bundle
+  deletion fails. Rootful Ubuntu 24.04 ARM64 VM controls cover rootfs mount
+  preservation, work-link substitution, concurrent same-UID mount races and
+  ordinary cleanup. Native Linux, rootless, artifact-signing and daemon
+  installation acceptance remain open.
 
 ## v0.0.30 — 2026-11-10
 
