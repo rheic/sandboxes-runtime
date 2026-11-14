@@ -1,5 +1,5 @@
 diff --git a/core/runtime/v2/bundle.go b/core/runtime/v2/bundle.go
-index 0987df61e88e32d97c1edcd691f88ed5405759b2..e13b30e802abfb805e27e5049fa272827cafde9e 100644
+index 0987df6..e13b30e 100644
 --- a/core/runtime/v2/bundle.go
 +++ b/core/runtime/v2/bundle.go
 @@ -27,21 +27,21 @@ import (
@@ -99,7 +99,7 @@ index 0987df61e88e32d97c1edcd691f88ed5405759b2..e13b30e802abfb805e27e5049fa27282
  }
 diff --git a/core/runtime/v2/bundle_remove_default.go b/core/runtime/v2/bundle_remove_default.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..53fbe624b389c601ea05bb4bcbc9874fe464d082
+index 0000000..53fbe62
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_default.go
 @@ -0,0 +1,63 @@
@@ -168,7 +168,7 @@ index 0000000000000000000000000000000000000000..53fbe624b389c601ea05bb4bcbc9874f
 +}
 diff --git a/core/runtime/v2/bundle_remove_linux.go b/core/runtime/v2/bundle_remove_linux.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..212891f2cae3e370769db4f5306022553bb07f99
+index 0000000..212891f
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_linux.go
 @@ -0,0 +1,366 @@
@@ -540,7 +540,7 @@ index 0000000000000000000000000000000000000000..212891f2cae3e370769db4f530602255
 +}
 diff --git a/core/runtime/v2/bundle_remove_linux_test.go b/core/runtime/v2/bundle_remove_linux_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..ae99266035908ffc93122f37cdc2d13034e34032
+index 0000000..ae99266
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_linux_test.go
 @@ -0,0 +1,205 @@
@@ -751,10 +751,10 @@ index 0000000000000000000000000000000000000000..ae99266035908ffc93122f37cdc2d130
 +}
 diff --git a/core/runtime/v2/bundle_remove_mount_linux_test.go b/core/runtime/v2/bundle_remove_mount_linux_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..c6809854fd95d21b106765febb28ff4d2ac98ebe
+index 0000000..4c826c4
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_mount_linux_test.go
-@@ -0,0 +1,465 @@
+@@ -0,0 +1,516 @@
 +//go:build linux
 +
 +/*
@@ -776,6 +776,7 @@ index 0000000000000000000000000000000000000000..c6809854fd95d21b106765febb28ff4d
 +package v2
 +
 +import (
++	"context"
 +	"crypto/rand"
 +	"errors"
 +	"fmt"
@@ -786,6 +787,8 @@ index 0000000000000000000000000000000000000000..c6809854fd95d21b106765febb28ff4d
 +	"testing"
 +	"time"
 +
++	runtimeapi "github.com/containerd/containerd/v2/core/runtime"
++	"github.com/containerd/containerd/v2/pkg/namespaces"
 +	"github.com/stretchr/testify/require"
 +	"golang.org/x/sys/unix"
 +)
@@ -896,6 +899,54 @@ index 0000000000000000000000000000000000000000..c6809854fd95d21b106765febb28ff4d
 +	if _, err := os.Lstat(bundle); !os.IsNotExist(err) {
 +		t.Fatalf("bundle path should be gone, got %v", err)
 +	}
++}
++
++// TestCleanupWorkDirsRejectsMountedWorkTree verifies the startup recovery
++// caller also refuses to remove an orphan work directory containing a mount.
++func TestCleanupWorkDirsRejectsMountedWorkTree(t *testing.T) {
++	if os.Getenv(mountTestEnv) != "1" {
++		t.Skipf("opt-in integration test: set %s=1 to run", mountTestEnv)
++	}
++	if os.Geteuid() != 0 {
++		t.Skip("skipping: mount privileges unavailable (requires root/CAP_SYS_ADMIN)")
++	}
++	requireConfinedRemoval(t)
++
++	root, err := filepath.EvalSymlinks(t.TempDir())
++	require.NoError(t, err)
++	ns := "rheic-cleanup-" + uniqueSuffix(t)
++	id := "orphan-" + uniqueSuffix(t)
++	label := "rheic-work-tmpfs-" + uniqueSuffix(t)
++	workDir := filepath.Join(root, ns, id)
++	mountAt := filepath.Join(workDir, "mnt")
++	require.NoError(t, os.MkdirAll(mountAt, 0o700))
++	if err := unix.Mount(label, mountAt, "tmpfs", 0, "size=64k"); err != nil {
++		if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENODEV) {
++			t.Skipf("skipping: mount privileges unavailable: %v", err)
++		}
++		t.Fatalf("failed to mount test tmpfs: %v", err)
++	}
++	t.Cleanup(func() {
++		for _, mp := range ownedMounts(t, root, label) {
++			detachOwnedMount(t, mp)
++		}
++	})
++	marker := filepath.Join(mountAt, "marker")
++	require.NoError(t, os.WriteFile(marker, []byte("PRESERVE"), 0o600))
++
++	ctx := namespaces.WithNamespace(context.Background(), ns)
++	manager := &ShimManager{shims: runtimeapi.NewNSMap[ShimInstance]()}
++	require.NoError(t, manager.cleanupWorkDirs(ctx, root))
++	require.DirExists(t, workDir)
++	data, err := os.ReadFile(marker)
++	require.NoError(t, err)
++	require.Equal(t, "PRESERVE", string(data))
++	require.Contains(t, ownedMounts(t, root, label), mountAt)
++
++	detachOwnedMount(t, mountAt)
++	require.NoError(t, manager.cleanupWorkDirs(ctx, root))
++	_, err = os.Lstat(workDir)
++	require.ErrorIs(t, err, os.ErrNotExist)
 +}
 +
 +// uniqueOwner returns a uid/gid pair from a high, random range that is
@@ -1221,7 +1272,7 @@ index 0000000000000000000000000000000000000000..c6809854fd95d21b106765febb28ff4d
 +	t.Errorf("failed to unmount test resource %q: %v (detach fallback: %v)", mountpoint, err, derr)
 +}
 diff --git a/core/runtime/v2/shim_load.go b/core/runtime/v2/shim_load.go
-index acc62b718d48dc1414061f188db098144c7585d9..64e1f14c21686fa15074f9c5a191bec9b93cb613 100644
+index acc62b7..4390b00 100644
 --- a/core/runtime/v2/shim_load.go
 +++ b/core/runtime/v2/shim_load.go
 @@ -51,7 +51,7 @@ func (m *ShimManager) LoadExistingShims(ctx context.Context, stateDir string, ro
@@ -1251,3 +1302,12 @@ index acc62b718d48dc1414061f188db098144c7585d9..64e1f14c21686fa15074f9c5a191bec9
  		if err != nil {
  			errLoad = err
  			// fine to return error here, it is a programmer error if the context
+@@ -287,7 +287,7 @@ func (m *ShimManager) cleanupWorkDirs(ctx context.Context, rootDir string) error
+ 		// but that persistent working dir is left
+ 		if _, err := m.shims.Get(ctx, dir); err != nil {
+ 			path := filepath.Join(rootDir, ns, dir)
+-			if err := os.RemoveAll(path); err != nil {
++			if err := removeTree(path); err != nil {
+ 				log.G(ctx).WithError(err).Errorf("cleanup working dir %s", path)
+ 			}
+ 		}
