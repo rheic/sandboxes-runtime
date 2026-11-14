@@ -36,11 +36,13 @@ adapter. The manifest is authoritative; the patches are checked by the
   atomic rename/rollback uses `renameat2(RENAME_NOREPLACE)`. Startup cleanup,
   failed bundle creation cleanup, stale work-directory replacement and
   dead-shim recovery use the same confined remover. Failed work cleanup leaves
-  the bundle available for a retry.
+  the bundle available for a retry, and an absent bundle can still clean its
+  expected orphan work directory.
   Targeted Ubuntu 24.04 ARM64 VM controls pass for bundle-wide and orphan
   work-tree mount preservation, file bind-mount preflight, stale work-path
   reuse refusal, same-UID post-rename mount races, work-link substitution,
-  retry after failed work cleanup and normal cleanup.
+  retry after failed work cleanup, orphan-work recovery with a missing bundle
+  and normal cleanup.
   Native Linux/rootless acceptance and managed production artifact selection
   remain open; the patched daemon is not yet the default installed artifact.
 

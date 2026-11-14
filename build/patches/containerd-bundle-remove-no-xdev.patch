@@ -1,5 +1,5 @@
 diff --git a/core/runtime/v2/bundle.go b/core/runtime/v2/bundle.go
-index 0987df6..840effd 100644
+index 0987df6..5bec5ed 100644
 --- a/core/runtime/v2/bundle.go
 +++ b/core/runtime/v2/bundle.go
 @@ -19,6 +19,7 @@ package v2
@@ -78,33 +78,35 @@ index 0987df6..840effd 100644
 -		return fmt.Errorf("unmount rootfs %s: %w", rootfs, err)
 +	if werr != nil && !errors.Is(werr, os.ErrNotExist) {
 +		return fmt.Errorf("failed to inspect bundle work link: %w", werr)
++	}
++	if werr == nil && (b.workPath == "" || filepath.Clean(work) != filepath.Clean(b.workPath)) {
++		return fmt.Errorf("refusing to delete bundle with unexpected work directory target %q", work)
  	}
 -	if err := os.Remove(rootfs); err != nil && !os.IsNotExist(err) {
 -		return fmt.Errorf("failed to remove bundle rootfs: %w", err)
-+	if werr == nil && (b.workPath == "" || filepath.Clean(work) != filepath.Clean(b.workPath)) {
-+		return fmt.Errorf("refusing to delete bundle with unexpected work directory target %q", work)
++	if err := verifyBundlePath(b.Path); err != nil {
++		return fmt.Errorf("refusing to delete bundle with mounted entry %s: %w", b.Path, err)
  	}
 -	err := atomicDelete(b.Path)
 -	if err == nil {
 -		if werr == nil {
 -			return atomicDelete(work)
-+	if werr == nil {
++	if b.workPath != "" {
 +		if err := verifyBundleWorkDir(b.workPath); err != nil {
 +			return fmt.Errorf("refusing to delete bundle with mounted work directory %s: %w", b.workPath, err)
  		}
 -		return nil
- 	}
+-	}
 -	// error removing the bundle path; still attempt removing work dir
 -	var err2 error
-+	if err := verifyBundlePath(b.Path); err != nil {
-+		return fmt.Errorf("refusing to delete bundle with mounted entry %s: %w", b.Path, err)
-+	}
- 	if werr == nil {
+-	if werr == nil {
 -		err2 = atomicDelete(work)
 -		if err2 == nil {
 -			return err
 +		// Remove work first so a failed work-tree cleanup leaves the bundle
-+		// available for a safe retry instead of orphaning persistent data.
++		// available for a safe retry instead of orphaning persistent data. The
++		// derived work path is also safe to clean when the bundle is already
++		// absent, recovering crashes between work creation and bundle creation.
 +		if err := atomicDelete(b.workPath); err != nil {
 +			return fmt.Errorf("failed to remove work directory %q: %w", b.workPath, err)
  		}
@@ -630,10 +632,10 @@ index 0000000..0de4f55
 +}
 diff --git a/core/runtime/v2/bundle_remove_linux_test.go b/core/runtime/v2/bundle_remove_linux_test.go
 new file mode 100644
-index 0000000..073f58d
+index 0000000..d2cc7f3
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_linux_test.go
-@@ -0,0 +1,255 @@
+@@ -0,0 +1,270 @@
 +//go:build linux
 +
 +/*
@@ -810,6 +812,21 @@ index 0000000..073f58d
 +	requireConfinedRemoval(t)
 +	err := (&Bundle{Path: filepath.Join(t.TempDir(), "missing", "bundle")}).Delete()
 +	require.NoError(t, err)
++}
++
++func TestBundleDeleteRemovesExpectedWorkWhenBundleIsMissing(t *testing.T) {
++	root := t.TempDir()
++	bundlePath := filepath.Join(root, "missing", "bundle")
++	workPath := filepath.Join(root, "work", "namespace", "id")
++	require.NoError(t, os.MkdirAll(workPath, 0o700))
++	require.NoError(t, os.WriteFile(filepath.Join(workPath, "state"), []byte("orphan"), 0o600))
++
++	bundle := &Bundle{Path: bundlePath, workPath: workPath}
++	require.NoError(t, bundle.Delete())
++	require.NoDirExists(t, workPath)
++	if _, err := os.Lstat(bundlePath); !os.IsNotExist(err) {
++		t.Fatalf("missing bundle should remain absent, got %v", err)
++	}
 +}
 +
 +func TestBundleDeletePreservesBundleWhenWorkCleanupFails(t *testing.T) {

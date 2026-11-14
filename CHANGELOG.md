@@ -14,8 +14,9 @@
   Rootful Ubuntu 24.04 ARM64 VM controls cover whole-bundle and orphan work-tree
   mount preservation, file bind-mount preflight, stale work-path reuse refusal,
   work-link substitution, concurrent same-UID mount races, retriable work-tree
-  cleanup failure and ordinary cleanup. Native Linux, rootless, artifact-signing
-  and daemon installation acceptance remain open.
+  cleanup failure, orphan-work retry after a missing bundle and ordinary
+  cleanup. Native Linux, rootless, artifact-signing and daemon installation
+  acceptance remain open.
 
 ## v0.0.30 — 2026-11-10
 
