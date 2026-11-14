@@ -43,6 +43,17 @@ adapter. The manifest is authoritative; the patches are checked by the
   reuse refusal, same-UID post-rename mount races, work-link substitution,
   retry after failed work cleanup, orphan-work recovery with a missing bundle
   and normal cleanup.
+  Startup recovers a hidden bundle tombstone only when container, sandbox and
+  shim stores all prove the ID absent; ambiguous bundle or work tombstones
+  preserve both visible and hidden work paths for active IDs. Linux path walks
+  reject symlink ancestors, mounts over the final namespace parent and
+  deterministic directory swaps between stat/open, rename/remove and recovery
+  checks. Container task deletion now retains its task record when shim cleanup
+  fails, allowing the cached exit result to support a later retry. On
+  non-Linux hosts bundle/work deletion fails closed without unmounting or
+  recursively deleting data; cleanup is not supported there. Same-UID mutation
+  of trusted root directories and the final name-to-unlink interval remain
+  outside the proven race guarantees.
   Native Linux/rootless acceptance and managed production artifact selection
   remain open; the patched daemon is not yet the default installed artifact.
 

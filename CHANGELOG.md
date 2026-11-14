@@ -8,14 +8,23 @@
   mount-boundary-aware bundle cleanup. It rejects mounts under host-side
   rootfs/work before mutation, preserves unknown mounts, validates the work
   symlink against trusted containerd roots, and keeps work data when bundle
-  deletion fails. Startup cleanup, failed bundle creation cleanup, stale
-  work-directory replacement and dead-shim recovery use the same confined
-  remover instead of crossing mounts or recursively unmounting unknown paths.
-  Rootful Ubuntu 24.04 ARM64 VM controls cover whole-bundle and orphan work-tree
-  mount preservation, file bind-mount preflight, stale work-path reuse refusal,
-  work-link substitution, concurrent same-UID mount races, retriable work-tree
-  cleanup failure, orphan-work retry after a missing bundle and ordinary
-  cleanup. Native Linux, rootless, artifact-signing and daemon installation
+  deletion fails. Startup recovers hidden bundle tombstones only after shim,
+  container and sandbox stores prove the ID absent; ambiguous bundle/work
+  tombstones preserve both visible and hidden work paths. Cleanup errors keep
+  the task record so the cached exit result can support a retry after the shim
+  client closes. Linux path walks reject symlink ancestors, mounts over the
+  namespace parent, and deterministic directory swaps during stat/open,
+  rename/remove, and recovery. Non-Linux deletion fails closed without
+  unmounting or recursively deleting data, so bundle cleanup is unsupported
+  there. Rootful Ubuntu 24.04 ARM64 VM controls cover whole-bundle and orphan
+  work-tree mount preservation, file bind-mount preflight, stale work-path
+  reuse refusal, work-link substitution, retriable work cleanup, orphan-work
+  retry after a missing bundle and ordinary cleanup. Privileged Linux-container
+  controls cover hidden tombstone recovery, namespace mount preservation,
+  active-record work preservation, deterministic inode-swap controls and task
+  deletion retry. Same-UID changes to trusted
+  ancestors and the final name-to-unlink interval are outside the proven race
+  guarantees. Native Linux, rootless, artifact-signing and daemon installation
   acceptance remain open.
 
 ## v0.0.30 — 2026-11-10
