@@ -33,9 +33,11 @@ adapter. The manifest is authoritative; the patches are checked by the
   recursively unmounted. The work symlink must match the path derived from
   trusted containerd roots. Recursive removal uses descriptor-relative
   `openat2(RESOLVE_NO_XDEV)` and atomic rename/rollback uses
-  `renameat2(RENAME_NOREPLACE)`. Startup cleanup of orphan work directories
-  uses the same confined remover. Targeted Ubuntu 24.04 ARM64 VM controls pass
-  for rootfs and orphan work-tree mount preservation, same-UID post-rename
+  `renameat2(RENAME_NOREPLACE)`. Startup cleanup, failed bundle creation
+  cleanup, stale work-directory replacement and dead-shim recovery use the
+  same confined remover and never recursively unmount unknown rootfs mounts.
+  Targeted Ubuntu 24.04 ARM64 VM controls pass for rootfs and orphan work-tree
+  mount preservation, stale work-path reuse refusal, same-UID post-rename
   mount races, work-link substitution and normal cleanup. Native Linux/rootless
   acceptance and managed production artifact selection remain open; the
   patched daemon is not yet the default installed artifact.

@@ -1,8 +1,16 @@
 diff --git a/core/runtime/v2/bundle.go b/core/runtime/v2/bundle.go
-index 0987df6..e13b30e 100644
+index 0987df6..c08b6d2 100644
 --- a/core/runtime/v2/bundle.go
 +++ b/core/runtime/v2/bundle.go
-@@ -27,21 +27,21 @@ import (
+@@ -19,6 +19,7 @@ package v2
+ import (
+ 	"context"
+ 	"encoding/json"
++	"errors"
+ 	"fmt"
+ 	"os"
+ 	"path/filepath"
+@@ -27,21 +28,21 @@ import (
  	"github.com/containerd/typeurl/v2"
  	"github.com/opencontainers/runtime-spec/specs-go"
  
@@ -27,7 +35,7 @@ index 0987df6..e13b30e 100644
  		Namespace: ns,
  	}, nil
  }
-@@ -61,6 +61,7 @@ func NewBundle(ctx context.Context, root, state, id string, spec typeurl.Any) (b
+@@ -61,12 +62,15 @@ func NewBundle(ctx context.Context, root, state, id string, spec typeurl.Any) (b
  		ID:        id,
  		Path:      filepath.Join(state, ns, id),
  		Namespace: ns,
@@ -35,7 +43,27 @@ index 0987df6..e13b30e 100644
  	}
  	var paths []string
  	defer func() {
-@@ -140,45 +141,35 @@ type Bundle struct {
+ 		if err != nil {
+ 			for _, d := range paths {
+-				os.RemoveAll(d)
++				if cleanupErr := removeTree(d); cleanupErr != nil {
++					err = errors.Join(err, fmt.Errorf("failed to clean up bundle path %q: %w", d, cleanupErr))
++				}
+ 			}
+ 		}
+ 	}()
+@@ -96,7 +100,9 @@ func NewBundle(ctx context.Context, root, state, id string, spec typeurl.Any) (b
+ 		if !os.IsExist(err) {
+ 			return nil, err
+ 		}
+-		os.RemoveAll(work)
++		if err := removeTree(work); err != nil {
++			return nil, fmt.Errorf("refusing to replace existing work directory %q: %w", work, err)
++		}
+ 		if err := os.Mkdir(work, 0711); err != nil {
+ 			return nil, err
+ 		}
+@@ -140,45 +146,35 @@ type Bundle struct {
  	Path string
  	// Namespace of the bundle
  	Namespace string
@@ -50,14 +78,14 @@ index 0987df6..e13b30e 100644
 -		return fmt.Errorf("unmount rootfs %s: %w", rootfs, err)
 +	if werr == nil && (b.workPath == "" || filepath.Clean(work) != filepath.Clean(b.workPath)) {
 +		return fmt.Errorf("refusing to delete bundle with unexpected work directory target %q", work)
- 	}
--	if err := os.Remove(rootfs); err != nil && !os.IsNotExist(err) {
--		return fmt.Errorf("failed to remove bundle rootfs: %w", err)
++	}
 +	if werr == nil {
 +		if err := verifyBundleWorkDir(b.workPath); err != nil {
 +			return fmt.Errorf("refusing to delete bundle with mounted work directory %s: %w", b.workPath, err)
 +		}
-+	}
+ 	}
+-	if err := os.Remove(rootfs); err != nil && !os.IsNotExist(err) {
+-		return fmt.Errorf("failed to remove bundle rootfs: %w", err)
 +	rootfs := filepath.Join(b.Path, "rootfs")
 +	if err := verifyBundleRootfs(rootfs); err != nil {
 +		return fmt.Errorf("refusing to delete bundle with mounted rootfs %s: %w", rootfs, err)
@@ -751,10 +779,10 @@ index 0000000..ae99266
 +}
 diff --git a/core/runtime/v2/bundle_remove_mount_linux_test.go b/core/runtime/v2/bundle_remove_mount_linux_test.go
 new file mode 100644
-index 0000000..4c826c4
+index 0000000..c402495
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_mount_linux_test.go
-@@ -0,0 +1,516 @@
+@@ -0,0 +1,565 @@
 +//go:build linux
 +
 +/*
@@ -947,6 +975,55 @@ index 0000000..4c826c4
 +	require.NoError(t, manager.cleanupWorkDirs(ctx, root))
 +	_, err = os.Lstat(workDir)
 +	require.ErrorIs(t, err, os.ErrNotExist)
++}
++
++// TestNewBundleRejectsReplacingMountedWorkTree verifies bundle creation does
++// not clear a stale work path across a mount boundary.
++func TestNewBundleRejectsReplacingMountedWorkTree(t *testing.T) {
++	if os.Getenv(mountTestEnv) != "1" {
++		t.Skipf("opt-in integration test: set %s=1 to run", mountTestEnv)
++	}
++	if os.Geteuid() != 0 {
++		t.Skip("skipping: mount privileges unavailable (requires root/CAP_SYS_ADMIN)")
++	}
++	requireConfinedRemoval(t)
++
++	root, err := filepath.EvalSymlinks(t.TempDir())
++	require.NoError(t, err)
++	state := filepath.Join(root, "state")
++	ns := "rheic-newbundle-" + uniqueSuffix(t)
++	id := "task-" + uniqueSuffix(t)
++	label := "rheic-existing-work-tmpfs-" + uniqueSuffix(t)
++	workDir := filepath.Join(root, ns, id)
++	mountAt := filepath.Join(workDir, "mnt")
++	require.NoError(t, os.MkdirAll(mountAt, 0o700))
++	if err := unix.Mount(label, mountAt, "tmpfs", 0, "size=64k"); err != nil {
++		if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENODEV) {
++			t.Skipf("skipping: mount privileges unavailable: %v", err)
++		}
++		t.Fatalf("failed to mount test tmpfs: %v", err)
++	}
++	t.Cleanup(func() {
++		for _, mp := range ownedMounts(t, root, label) {
++			detachOwnedMount(t, mp)
++		}
++	})
++	marker := filepath.Join(mountAt, "marker")
++	require.NoError(t, os.WriteFile(marker, []byte("PRESERVE"), 0o600))
++
++	ctx := namespaces.WithNamespace(context.Background(), ns)
++	_, err = NewBundle(ctx, root, state, id, nil)
++	require.ErrorIs(t, err, errCrossMount)
++	_, err = os.Lstat(filepath.Join(state, ns, id))
++	require.ErrorIs(t, err, os.ErrNotExist)
++	require.DirExists(t, workDir)
++	data, err := os.ReadFile(marker)
++	require.NoError(t, err)
++	require.Equal(t, "PRESERVE", string(data))
++	require.Contains(t, ownedMounts(t, root, label), mountAt)
++
++	detachOwnedMount(t, mountAt)
++	require.NoError(t, removeTree(workDir))
 +}
 +
 +// uniqueOwner returns a uid/gid pair from a high, random range that is
@@ -1272,10 +1349,18 @@ index 0000000..4c826c4
 +	t.Errorf("failed to unmount test resource %q: %v (detach fallback: %v)", mountpoint, err, derr)
 +}
 diff --git a/core/runtime/v2/shim_load.go b/core/runtime/v2/shim_load.go
-index acc62b7..4390b00 100644
+index acc62b7..f6386d6 100644
 --- a/core/runtime/v2/shim_load.go
 +++ b/core/runtime/v2/shim_load.go
-@@ -51,7 +51,7 @@ func (m *ShimManager) LoadExistingShims(ctx context.Context, stateDir string, ro
+@@ -27,7 +27,6 @@ import (
+ 	"github.com/containerd/errdefs"
+ 	"github.com/containerd/log"
+ 
+-	"github.com/containerd/containerd/v2/core/mount"
+ 	runtimeapi "github.com/containerd/containerd/v2/core/runtime"
+ 	"github.com/containerd/containerd/v2/pkg/namespaces"
+ 	"github.com/containerd/containerd/v2/pkg/timeout"
+@@ -51,7 +50,7 @@ func (m *ShimManager) LoadExistingShims(ctx context.Context, stateDir string, ro
  			continue
  		}
  		log.G(ctx).WithField("namespace", ns).Debug("loading tasks in namespace")
@@ -1284,7 +1369,7 @@ index acc62b7..4390b00 100644
  			log.G(ctx).WithField("namespace", ns).WithError(err).Error("loading tasks in namespace")
  			continue
  		}
-@@ -63,7 +63,7 @@ func (m *ShimManager) LoadExistingShims(ctx context.Context, stateDir string, ro
+@@ -63,7 +62,7 @@ func (m *ShimManager) LoadExistingShims(ctx context.Context, stateDir string, ro
  	return nil
  }
  
@@ -1293,7 +1378,7 @@ index acc62b7..4390b00 100644
  	ns, err := namespaces.NamespaceRequired(ctx)
  	if err != nil {
  		return err
-@@ -86,7 +86,7 @@ func (m *ShimManager) loadShims(ctx context.Context, stateDir string) error {
+@@ -86,7 +85,7 @@ func (m *ShimManager) loadShims(ctx context.Context, stateDir string) error {
  		if len(id) > 0 && id[0] == '.' {
  			continue
  		}
@@ -1302,7 +1387,17 @@ index acc62b7..4390b00 100644
  		if err != nil {
  			errLoad = err
  			// fine to return error here, it is a programmer error if the context
-@@ -287,7 +287,7 @@ func (m *ShimManager) cleanupWorkDirs(ctx context.Context, rootDir string) error
+@@ -150,9 +149,6 @@ func (m *ShimManager) loadShim(ctx context.Context, bundle *Bundle) error {
+ 		container, err := m.containers.Get(ctx, id)
+ 		if err != nil {
+ 			log.G(ctx).WithError(err).Errorf("loading container %s", id)
+-			if err := mount.UnmountRecursive(filepath.Join(bundle.Path, "rootfs"), 0); err != nil {
+-				log.G(ctx).WithError(err).Errorf("failed to unmount of rootfs %s", id)
+-			}
+ 			return err
+ 		}
+ 		runtime = container.Runtime.Name
+@@ -287,7 +283,7 @@ func (m *ShimManager) cleanupWorkDirs(ctx context.Context, rootDir string) error
  		// but that persistent working dir is left
  		if _, err := m.shims.Get(ctx, dir); err != nil {
  			path := filepath.Join(rootDir, ns, dir)

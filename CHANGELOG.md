@@ -8,10 +8,12 @@
   mount-boundary-aware bundle cleanup. It rejects mounts under host-side
   rootfs/work before mutation, preserves unknown mounts, validates the work
   symlink against trusted containerd roots, and keeps work data when bundle
-  deletion fails. Startup cleanup of orphan work directories uses the same
-  confined remover. Rootful Ubuntu 24.04 ARM64 VM controls cover rootfs and
-  orphan work-tree mount preservation, work-link substitution, concurrent
-  same-UID mount races and ordinary cleanup. Native Linux, rootless,
+  deletion fails. Startup cleanup, failed bundle creation cleanup, stale
+  work-directory replacement and dead-shim recovery use the same confined
+  remover instead of crossing mounts or recursively unmounting unknown paths.
+  Rootful Ubuntu 24.04 ARM64 VM controls cover rootfs and orphan work-tree
+  mount preservation, stale work-path reuse refusal, work-link substitution,
+  concurrent same-UID mount races and ordinary cleanup. Native Linux, rootless,
   artifact-signing and daemon installation acceptance remain open.
 
 ## v0.0.30 — 2026-11-10
