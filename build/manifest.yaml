@@ -50,7 +50,7 @@ components:
 patches:
   containerd-bundle-remove-no-xdev:
     file: patches/containerd-bundle-remove-no-xdev.patch
-    sha256: 5c80753e55df45875829b4f29e242579374411e07c0e208a8a0912faa6e16bf6
+    sha256: 4d476981728a1781c022e8380bf01ce121f926835456213bb9d2abf0592b9ba3
     status: experimental
   nerdbox-gpt-threshold:
     file: patches/nerdbox-gpt-threshold.patch

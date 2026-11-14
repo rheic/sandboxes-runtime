@@ -11,10 +11,11 @@
   deletion fails. Startup cleanup, failed bundle creation cleanup, stale
   work-directory replacement and dead-shim recovery use the same confined
   remover instead of crossing mounts or recursively unmounting unknown paths.
-  Rootful Ubuntu 24.04 ARM64 VM controls cover rootfs and orphan work-tree
-  mount preservation, stale work-path reuse refusal, work-link substitution,
-  concurrent same-UID mount races and ordinary cleanup. Native Linux, rootless,
-  artifact-signing and daemon installation acceptance remain open.
+  Rootful Ubuntu 24.04 ARM64 VM controls cover whole-bundle and orphan work-tree
+  mount preservation, file bind-mount preflight, stale work-path reuse refusal,
+  work-link substitution, concurrent same-UID mount races, retriable work-tree
+  cleanup failure and ordinary cleanup. Native Linux, rootless, artifact-signing
+  and daemon installation acceptance remain open.
 
 ## v0.0.30 — 2026-11-10
 

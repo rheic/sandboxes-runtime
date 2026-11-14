@@ -28,19 +28,21 @@ adapter. The manifest is authoritative; the patches are checked by the
 ## Patches
 
 - `patches/containerd-bundle-remove-no-xdev.patch` — Linux bundle deletion
-  verifies that neither the host-side `rootfs` nor the expected work tree
-  contains mounts before mutating the bundle; unknown mounts are never
-  recursively unmounted. The work symlink must match the path derived from
-  trusted containerd roots. Recursive removal uses descriptor-relative
-  `openat2(RESOLVE_NO_XDEV)` and atomic rename/rollback uses
-  `renameat2(RENAME_NOREPLACE)`. Startup cleanup, failed bundle creation
-  cleanup, stale work-directory replacement and dead-shim recovery use the
-  same confined remover and never recursively unmount unknown rootfs mounts.
-  Targeted Ubuntu 24.04 ARM64 VM controls pass for rootfs and orphan work-tree
-  mount preservation, stale work-path reuse refusal, same-UID post-rename
-  mount races, work-link substitution and normal cleanup. Native Linux/rootless
-  acceptance and managed production artifact selection remain open; the
-  patched daemon is not yet the default installed artifact.
+  preflights the entire host-side bundle and expected work tree for mounts
+  before mutating either tree; it rechecks after bundle rename and all direct
+  tree removals preflight too. Unknown mounts are never recursively unmounted.
+  The work symlink must match the path derived from trusted containerd roots.
+  Recursive removal uses descriptor-relative `openat2(RESOLVE_NO_XDEV)` and
+  atomic rename/rollback uses `renameat2(RENAME_NOREPLACE)`. Startup cleanup,
+  failed bundle creation cleanup, stale work-directory replacement and
+  dead-shim recovery use the same confined remover. Failed work cleanup leaves
+  the bundle available for a retry.
+  Targeted Ubuntu 24.04 ARM64 VM controls pass for bundle-wide and orphan
+  work-tree mount preservation, file bind-mount preflight, stale work-path
+  reuse refusal, same-UID post-rename mount races, work-link substitution,
+  retry after failed work cleanup and normal cleanup.
+  Native Linux/rootless acceptance and managed production artifact selection
+  remain open; the patched daemon is not yet the default installed artifact.
 
 The gvproxy patch is experimental until matching integration and security
 tests are recorded in the plan:

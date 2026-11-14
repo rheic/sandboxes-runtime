@@ -1,5 +1,5 @@
 diff --git a/core/runtime/v2/bundle.go b/core/runtime/v2/bundle.go
-index 0987df6..c08b6d2 100644
+index 0987df6..840effd 100644
 --- a/core/runtime/v2/bundle.go
 +++ b/core/runtime/v2/bundle.go
 @@ -19,6 +19,7 @@ package v2
@@ -63,7 +63,7 @@ index 0987df6..c08b6d2 100644
  		if err := os.Mkdir(work, 0711); err != nil {
  			return nil, err
  		}
-@@ -140,45 +146,35 @@ type Bundle struct {
+@@ -140,45 +146,40 @@ type Bundle struct {
  	Path string
  	// Namespace of the bundle
  	Namespace string
@@ -76,39 +76,43 @@ index 0987df6..c08b6d2 100644
 -	rootfs := filepath.Join(b.Path, "rootfs")
 -	if err := mount.UnmountRecursive(rootfs, 0); err != nil {
 -		return fmt.Errorf("unmount rootfs %s: %w", rootfs, err)
-+	if werr == nil && (b.workPath == "" || filepath.Clean(work) != filepath.Clean(b.workPath)) {
-+		return fmt.Errorf("refusing to delete bundle with unexpected work directory target %q", work)
-+	}
-+	if werr == nil {
-+		if err := verifyBundleWorkDir(b.workPath); err != nil {
-+			return fmt.Errorf("refusing to delete bundle with mounted work directory %s: %w", b.workPath, err)
-+		}
++	if werr != nil && !errors.Is(werr, os.ErrNotExist) {
++		return fmt.Errorf("failed to inspect bundle work link: %w", werr)
  	}
 -	if err := os.Remove(rootfs); err != nil && !os.IsNotExist(err) {
 -		return fmt.Errorf("failed to remove bundle rootfs: %w", err)
-+	rootfs := filepath.Join(b.Path, "rootfs")
-+	if err := verifyBundleRootfs(rootfs); err != nil {
-+		return fmt.Errorf("refusing to delete bundle with mounted rootfs %s: %w", rootfs, err)
++	if werr == nil && (b.workPath == "" || filepath.Clean(work) != filepath.Clean(b.workPath)) {
++		return fmt.Errorf("refusing to delete bundle with unexpected work directory target %q", work)
  	}
- 	err := atomicDelete(b.Path)
+-	err := atomicDelete(b.Path)
 -	if err == nil {
 -		if werr == nil {
 -			return atomicDelete(work)
--		}
++	if werr == nil {
++		if err := verifyBundleWorkDir(b.workPath); err != nil {
++			return fmt.Errorf("refusing to delete bundle with mounted work directory %s: %w", b.workPath, err)
+ 		}
 -		return nil
-+	if err != nil {
-+		return fmt.Errorf("failed to remove bundle %q: %w", b.Path, err)
  	}
 -	// error removing the bundle path; still attempt removing work dir
 -	var err2 error
++	if err := verifyBundlePath(b.Path); err != nil {
++		return fmt.Errorf("refusing to delete bundle with mounted entry %s: %w", b.Path, err)
++	}
  	if werr == nil {
 -		err2 = atomicDelete(work)
 -		if err2 == nil {
 -			return err
--		}
-+		return atomicDelete(b.workPath)
++		// Remove work first so a failed work-tree cleanup leaves the bundle
++		// available for a safe retry instead of orphaning persistent data.
++		if err := atomicDelete(b.workPath); err != nil {
++			return fmt.Errorf("failed to remove work directory %q: %w", b.workPath, err)
+ 		}
  	}
 -	return fmt.Errorf("failed to remove both bundle and workdir locations: %v: %w", err2, err)
++	if err := atomicDelete(b.Path); err != nil {
++		return fmt.Errorf("failed to remove bundle %q: %w", b.Path, err)
++	}
 +	return nil
  }
  
@@ -127,7 +131,7 @@ index 0987df6..c08b6d2 100644
  }
 diff --git a/core/runtime/v2/bundle_remove_default.go b/core/runtime/v2/bundle_remove_default.go
 new file mode 100644
-index 0000000..53fbe62
+index 0000000..07dfe0b
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_default.go
 @@ -0,0 +1,63 @@
@@ -159,11 +163,11 @@ index 0000000..53fbe62
 +	"github.com/containerd/containerd/v2/core/mount"
 +)
 +
-+func verifyBundleRootfs(rootfs string) error {
-+	if err := mount.UnmountRecursive(rootfs, 0); err != nil {
-+		return fmt.Errorf("unmount rootfs %s: %w", rootfs, err)
++func verifyBundlePath(path string) error {
++	if err := mount.UnmountRecursive(filepath.Join(path, "rootfs"), 0); err != nil {
++		return fmt.Errorf("unmount rootfs %s: %w", filepath.Join(path, "rootfs"), err)
 +	}
-+	if err := os.Remove(rootfs); err != nil && !os.IsNotExist(err) {
++	if err := os.Remove(filepath.Join(path, "rootfs")); err != nil && !os.IsNotExist(err) {
 +		return fmt.Errorf("failed to remove bundle rootfs: %w", err)
 +	}
 +	return nil
@@ -196,10 +200,10 @@ index 0000000..53fbe62
 +}
 diff --git a/core/runtime/v2/bundle_remove_linux.go b/core/runtime/v2/bundle_remove_linux.go
 new file mode 100644
-index 0000000..212891f
+index 0000000..0de4f55
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_linux.go
-@@ -0,0 +1,366 @@
+@@ -0,0 +1,424 @@
 +//go:build linux
 +
 +/*
@@ -256,11 +260,11 @@ index 0000000..212891f
 +// multiple batches.
 +const direntBufSize = 8192
 +
-+// verifyBundleRootfs rejects every mount visible beneath a bundle's host-side
-+// rootfs before any bundle entry is removed. Nerdbox mounts task rootfs inside
-+// the guest; host-side rootfs mounts are not part of this runtime contract.
-+// Do not unmount unknown mounts here: a mount boundary is a hard cleanup error.
-+func verifyBundleRootfs(path string) error {
++// verifyBundlePath rejects every mount visible beneath the host-side bundle
++// before any bundle entry is removed. Nerdbox mounts task rootfs inside the
++// guest; host-side mounts are not part of this runtime contract. Do not
++// unmount unknown mounts here: a mount boundary is a hard cleanup error.
++func verifyBundlePath(path string) error {
 +	return verifyNoMounts(path)
 +}
 +
@@ -271,6 +275,9 @@ index 0000000..212891f
 +func verifyNoMounts(path string) error {
 +	parentFD, err := openDir(filepath.Dir(path))
 +	if err != nil {
++		if errors.Is(err, unix.ENOENT) {
++			return nil
++		}
 +		return err
 +	}
 +	defer unix.Close(parentFD)
@@ -288,6 +295,14 @@ index 0000000..212891f
 +		}
 +		return fmt.Errorf("failed to stat rootfs path %q: %w", display, err)
 +	}
++	entryFD, err := openEntryBeneath(parentFD, name)
++	if err != nil {
++		if errors.Is(err, unix.ENOENT) {
++			return nil
++		}
++		return fmt.Errorf("failed to inspect rootfs entry %q: %w", display, err)
++	}
++	defer unix.Close(entryFD)
 +	if st.Mode&unix.S_IFMT != unix.S_IFDIR {
 +		return nil
 +	}
@@ -343,8 +358,14 @@ index 0000000..212891f
 +//
 +// A missing path is not an error (matching os.RemoveAll behavior).
 +func removeTree(path string) error {
++	if err := verifyNoMounts(path); err != nil {
++		return fmt.Errorf("refusing to remove tree %q with mounted entry: %w", path, err)
++	}
 +	pfd, err := openDir(filepath.Dir(path))
 +	if err != nil {
++		if errors.Is(err, unix.ENOENT) {
++			return nil
++		}
 +		return err
 +	}
 +	defer unix.Close(pfd)
@@ -359,6 +380,9 @@ index 0000000..212891f
 +	parent := filepath.Dir(path)
 +	pfd, err := openDir(parent)
 +	if err != nil {
++		if errors.Is(err, unix.ENOENT) {
++			return nil
++		}
 +		return err
 +	}
 +	defer unix.Close(pfd)
@@ -376,6 +400,19 @@ index 0000000..212891f
 +	}
 +
 +	display := filepath.Join(parent, atomicName)
++	// A same-UID actor can attach a mount after the initial preflight and
++	// before or immediately after the rename. Scan the quarantined tree again
++	// before the first unlink so that a mount observed in that window cannot
++	// cause partial deletion of bundle siblings.
++	if err := verifyNoMountsAt(pfd, atomicName, display); err != nil {
++		restoreErr := retryEINTR(func() error {
++			return unix.Renameat2(pfd, atomicName, pfd, name, unix.RENAME_NOREPLACE)
++		})
++		if restoreErr != nil {
++			return errors.Join(err, fmt.Errorf("failed to restore bundle from %q to %q after mount preflight failure: %w", display, path, restoreErr))
++		}
++		return err
++	}
 +	if err := removeTreeAt(pfd, atomicName, display); err != nil {
 +		restoreErr := retryEINTR(func() error {
 +			return unix.Renameat2(pfd, atomicName, pfd, name, unix.RENAME_NOREPLACE)
@@ -431,6 +468,31 @@ index 0000000..212891f
 +		var err error
 +		fd, err = unix.Openat2(dirfd, name, &unix.OpenHow{
 +			Flags:   unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC,
++			Resolve: resolveConfine,
++		})
++		return err
++	})
++	switch {
++	case err == nil:
++		return fd, nil
++	case errors.Is(err, unix.EXDEV):
++		return -1, fmt.Errorf("%q is a mountpoint (or resolution crossed one): %w: %w", name, err, errCrossMount)
++	case errors.Is(err, unix.ENOSYS), errors.Is(err, unix.EINVAL):
++		return -1, fmt.Errorf("cannot verify removal confinement for %q: %w: %w", name, err, errOpenat2Unsupported)
++	default:
++		return -1, err
++	}
++}
++
++// openEntryBeneath opens any final entry, including a symlink itself, without
++// following it or crossing a mountpoint. O_PATH lets the preflight detect
++// file bind mounts as well as directory mounts before cleanup mutates siblings.
++func openEntryBeneath(dirfd int, name string) (int, error) {
++	var fd int
++	err := retryEINTR(func() error {
++		var err error
++		fd, err = unix.Openat2(dirfd, name, &unix.OpenHow{
++			Flags:   unix.O_PATH | unix.O_CLOEXEC | unix.O_NOFOLLOW,
 +			Resolve: resolveConfine,
 +		})
 +		return err
@@ -568,10 +630,10 @@ index 0000000..212891f
 +}
 diff --git a/core/runtime/v2/bundle_remove_linux_test.go b/core/runtime/v2/bundle_remove_linux_test.go
 new file mode 100644
-index 0000000..ae99266
+index 0000000..073f58d
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_linux_test.go
-@@ -0,0 +1,205 @@
+@@ -0,0 +1,255 @@
 +//go:build linux
 +
 +/*
@@ -734,6 +796,56 @@ index 0000000..ae99266
 +	require.NoError(t, removeTree(filepath.Join(t.TempDir(), "does-not-exist")))
 +}
 +
++func TestRemoveTreeMissingParent(t *testing.T) {
++	requireConfinedRemoval(t)
++	require.NoError(t, removeTree(filepath.Join(t.TempDir(), "missing", "child")))
++}
++
++func TestAtomicDeleteMissingParent(t *testing.T) {
++	requireConfinedRemoval(t)
++	require.NoError(t, atomicDelete(filepath.Join(t.TempDir(), "missing", "bundle")))
++}
++
++func TestBundleDeleteMissingParent(t *testing.T) {
++	requireConfinedRemoval(t)
++	err := (&Bundle{Path: filepath.Join(t.TempDir(), "missing", "bundle")}).Delete()
++	require.NoError(t, err)
++}
++
++func TestBundleDeletePreservesBundleWhenWorkCleanupFails(t *testing.T) {
++	root := t.TempDir()
++	bundlePath := filepath.Join(root, "bundle")
++	workPath := filepath.Join(root, "work")
++	require.NoError(t, os.MkdirAll(filepath.Join(bundlePath, "rootfs"), 0o700))
++	require.NoError(t, os.WriteFile(filepath.Join(bundlePath, "config.json"), []byte("{}"), 0o600))
++	require.NoError(t, os.Mkdir(workPath, 0o700))
++	require.NoError(t, os.WriteFile(filepath.Join(workPath, "state"), []byte("preserve"), 0o600))
++	require.NoError(t, os.Symlink(workPath, filepath.Join(bundlePath, "work")))
++
++	// An existing hidden sibling makes the NOREPLACE rename fail without
++	// changing either owned tree. This simulates an interrupted prior cleanup.
++	workAtomicPath := filepath.Join(root, ".work")
++	require.NoError(t, os.Mkdir(workAtomicPath, 0o700))
++	require.NoError(t, os.WriteFile(filepath.Join(workAtomicPath, "sentinel"), []byte("keep"), 0o600))
++
++	bundle := &Bundle{Path: bundlePath, workPath: workPath}
++	err := bundle.Delete()
++	require.Error(t, err)
++	require.DirExists(t, bundlePath, "bundle must remain available for a retry")
++	require.FileExists(t, filepath.Join(bundlePath, "config.json"))
++	state, err := os.ReadFile(filepath.Join(workPath, "state"))
++	require.NoError(t, err)
++	require.Equal(t, "preserve", string(state))
++	sentinel, err := os.ReadFile(filepath.Join(workAtomicPath, "sentinel"))
++	require.NoError(t, err)
++	require.Equal(t, "keep", string(sentinel))
++
++	require.NoError(t, os.RemoveAll(workAtomicPath))
++	require.NoError(t, bundle.Delete(), "retry should remove the bundle and work tree")
++	require.NoDirExists(t, bundlePath)
++	require.NoDirExists(t, workPath)
++}
++
 +func TestRemoveTreePlainFile(t *testing.T) {
 +	requireConfinedRemoval(t)
 +	dir := t.TempDir()
@@ -779,10 +891,10 @@ index 0000000..ae99266
 +}
 diff --git a/core/runtime/v2/bundle_remove_mount_linux_test.go b/core/runtime/v2/bundle_remove_mount_linux_test.go
 new file mode 100644
-index 0000000..c402495
+index 0000000..150efc8
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_mount_linux_test.go
-@@ -0,0 +1,565 @@
+@@ -0,0 +1,655 @@
 +//go:build linux
 +
 +/*
@@ -826,7 +938,7 @@ index 0000000..c402495
 +const mountTestEnv = "CONTAINERD_TEST_BUNDLE_MOUNT_REMOVAL"
 +
 +// TestRemoveTreeWithMountedDescendant creates a uniquely named tmpfs mount
-+// beneath the bundle's rootfs and proves that cleanup fails closed before
++// beneath a non-rootfs bundle directory and proves cleanup fails closed before
 +// mutating the bundle: the tmpfs marker, mount and config file survive. The
 +// test then unmounts exactly the mount it created (matched by unique source
 +// label and parent directory) and verifies removal succeeds.
@@ -850,7 +962,7 @@ index 0000000..c402495
 +	label := "rheic-tmpfs-" + uniqueSuffix(t)
 +	bundle := filepath.Join(dir, bundleID)
 +	rootfs := filepath.Join(bundle, "rootfs")
-+	mountAt := filepath.Join(rootfs, "mnt")
++	mountAt := filepath.Join(bundle, "mounts", "0")
 +
 +	require.NoError(t, os.MkdirAll(rootfs, 0o700))
 +	require.NoError(t, os.MkdirAll(mountAt, 0o700))
@@ -882,14 +994,14 @@ index 0000000..c402495
 +	require.NoError(t, unix.Lchown(marker, uid, gid))
 +	require.Contains(t, ownedMounts(t, dir, label), mountAt)
 +
-+	// Exercise Bundle.Delete itself. A rootfs mount must fail before any
++	// Exercise Bundle.Delete itself. A mount outside rootfs must fail before any
 +	// bundle entry is removed or any mount is detached.
 +	ownedBundle := &Bundle{Path: bundle}
 +	err = ownedBundle.Delete()
 +	require.Error(t, err)
 +	require.ErrorIs(t, err, errCrossMount)
 +
-+	// The rootfs preflight must leave the original bundle fully available.
++	// The whole-bundle preflight must leave the original bundle fully available.
 +	atomicPath := filepath.Join(dir, "."+bundleID)
 +	require.DirExists(t, bundle)
 +	if _, err := os.Lstat(atomicPath); !os.IsNotExist(err) {
@@ -897,6 +1009,13 @@ index 0000000..c402495
 +	}
 +	config, err := os.ReadFile(filepath.Join(bundle, "config.json"))
 +	require.NoError(t, err, "bundle metadata must survive failed cleanup")
++	require.Equal(t, "{}", string(config))
++	// Direct cleanup callers use the same non-mutating preflight. The mount
++	// must not be discovered only after earlier bundle entries are removed.
++	err = removeTree(bundle)
++	require.ErrorIs(t, err, errCrossMount)
++	config, err = os.ReadFile(filepath.Join(bundle, "config.json"))
++	require.NoError(t, err, "direct cleanup must preserve earlier bundle entries")
 +	require.Equal(t, "{}", string(config))
 +	mountedMarker := filepath.Join(mountAt, "marker")
 +
@@ -927,6 +1046,79 @@ index 0000000..c402495
 +	if _, err := os.Lstat(bundle); !os.IsNotExist(err) {
 +		t.Fatalf("bundle path should be gone, got %v", err)
 +	}
++}
++
++// TestBundleDeleteRejectsFileBindMount verifies preflight detects a file bind
++// mount before atomic cleanup can remove earlier bundle entries.
++func TestBundleDeleteRejectsFileBindMount(t *testing.T) {
++	if os.Getenv(mountTestEnv) != "1" {
++		t.Skipf("opt-in integration test: set %s=1 to run", mountTestEnv)
++	}
++	if os.Geteuid() != 0 {
++		t.Skip("skipping: mount privileges unavailable (requires root/CAP_SYS_ADMIN)")
++	}
++	requireConfinedRemoval(t)
++
++	dir, err := filepath.EvalSymlinks(t.TempDir())
++	require.NoError(t, err)
++	bundle := filepath.Join(dir, "rheic-file-bind-"+uniqueSuffix(t))
++	configPath := filepath.Join(bundle, "config.json")
++	require.NoError(t, os.MkdirAll(bundle, 0o700))
++	require.NoError(t, os.WriteFile(configPath, []byte("CONFIG_PRESERVE"), 0o600))
++	rootfs := filepath.Join(bundle, "rootfs")
++	require.NoError(t, os.MkdirAll(rootfs, 0o700))
++	source := filepath.Join(dir, "rheic-bind-source-"+uniqueSuffix(t))
++	target := filepath.Join(rootfs, "bind-file")
++	require.NoError(t, os.WriteFile(source, []byte("BIND_PRESERVE"), 0o600))
++	require.NoError(t, os.WriteFile(target, []byte("original"), 0o600))
++
++	var parentMount unix.Statx_t
++	require.NoError(t, unix.Statx(unix.AT_FDCWD, rootfs, 0, unix.STATX_MNT_ID, &parentMount))
++	if err := unix.Mount(source, target, "", unix.MS_BIND, ""); err != nil {
++		if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENODEV) {
++			t.Skipf("skipping: bind mount privileges unavailable: %v", err)
++		}
++		t.Fatalf("failed to create test-owned file bind mount: %v", err)
++	}
++	var mounted unix.Statx_t
++	require.NoError(t, unix.Statx(unix.AT_FDCWD, target, 0, unix.STATX_MNT_ID, &mounted))
++	require.NotEqual(t, parentMount.Mnt_id, mounted.Mnt_id, "file bind mount must have its own mount id")
++	mountActive := true
++	t.Cleanup(func() {
++		if !mountActive {
++			return
++		}
++		var current unix.Statx_t
++		if err := unix.Statx(unix.AT_FDCWD, target, 0, unix.STATX_MNT_ID, &current); err != nil {
++			if !errors.Is(err, unix.ENOENT) {
++				t.Errorf("inspect owned file bind mount before cleanup: %v", err)
++			}
++			return
++		}
++		if current.Mnt_id != mounted.Mnt_id {
++			t.Errorf("refusing to unmount replaced path %q: mount id %d, own mount id %d", target, current.Mnt_id, mounted.Mnt_id)
++			return
++		}
++		if err := unix.Unmount(target, unix.UMOUNT_NOFOLLOW); err != nil && !errors.Is(err, unix.EINVAL) && !errors.Is(err, unix.ENOENT) {
++			t.Errorf("unmount test-owned file bind mount %q: %v", target, err)
++		}
++	})
++
++	err = (&Bundle{Path: bundle}).Delete()
++	require.ErrorIs(t, err, errCrossMount)
++	require.DirExists(t, bundle)
++	config, err := os.ReadFile(configPath)
++	require.NoError(t, err)
++	require.Equal(t, "CONFIG_PRESERVE", string(config), "preflight must not partially delete bundle entries")
++	data, err := os.ReadFile(target)
++	require.NoError(t, err)
++	require.Equal(t, "BIND_PRESERVE", string(data), "mounted file contents must remain intact")
++
++	if err := unix.Unmount(target, unix.UMOUNT_NOFOLLOW); err != nil {
++		t.Fatalf("detach test-owned file bind mount: %v", err)
++	}
++	mountActive = false
++	require.NoError(t, (&Bundle{Path: bundle}).Delete(), "ordinary cleanup succeeds after owned unmount")
 +}
 +
 +// TestCleanupWorkDirsRejectsMountedWorkTree verifies the startup recovery
@@ -1147,6 +1339,16 @@ index 0000000..c402495
 +	}
 +	if _, err := os.Lstat(atomicBundle); !os.IsNotExist(err) {
 +		return false, fmt.Errorf("hidden bundle path should have been restored, got %v", err)
++	}
++	config, err := os.ReadFile(filepath.Join(bundle, "config.json"))
++	if err != nil {
++		return false, fmt.Errorf("bundle config was not preserved after mount race: %w", err)
++	}
++	if string(config) != "{}" {
++		return false, fmt.Errorf("bundle config changed after mount race: %q", config)
++	}
++	if _, err := os.Stat(filepath.Join(bundle, "entry-00000")); err != nil {
++		return false, fmt.Errorf("bundle sibling was not preserved after mount race: %w", err)
 +	}
 +	marker := filepath.Join(mountAt, "marker")
 +	data, err := os.ReadFile(marker)
