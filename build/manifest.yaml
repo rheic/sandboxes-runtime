@@ -13,6 +13,7 @@ components:
     sha256: 91a44a2b8a716600ad94a4f143e156116620db8828086a6e3602291be9bd0bb4
   containerd:
     version: "2.4.2"
+    commit: b7a25261e029d68978bbf290df0a62fc819b3c51
     source: https://github.com/containerd/containerd
   nerdbox:
     version: "0.2.5"
@@ -47,6 +48,10 @@ components:
     source: https://download.qemu.org/qemu-11.1.3.tar.xz
     sha512: 6bcade0af849e6a7f124e2b07d07e8a6e1fd160dcdc7f3c9c968cbdbc8922b2ddfa68493105ac14516f8eea83db6ef4dba07cc6776a61aa023508b31e53b9ef7
 patches:
+  containerd-bundle-remove-no-xdev:
+    file: patches/containerd-bundle-remove-no-xdev.patch
+    sha256: cf44cc3ee127e9793d952f565854346779c7592df288b3f2062d3683c34360b6
+    status: experimental
   nerdbox-gpt-threshold:
     file: patches/nerdbox-gpt-threshold.patch
     sha256: 3df47b5267861607b37d9a1f1baf3b5b2c6e36abdd62b1f864fcf75deb9e2de2

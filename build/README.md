@@ -27,6 +27,36 @@ adapter. The manifest is authoritative; the patches are checked by the
 
 ## Patches
 
+- `patches/containerd-bundle-remove-no-xdev.patch` — Linux bundle deletion
+  preflights the entire host-side bundle and expected work tree for mounts
+  before mutating either tree; it rechecks after bundle rename and all direct
+  tree removals preflight too. Unknown mounts are never recursively unmounted.
+  The work symlink must match the path derived from trusted containerd roots.
+  Recursive removal uses descriptor-relative `openat2(RESOLVE_NO_XDEV)` and
+  atomic rename/rollback uses `renameat2(RENAME_NOREPLACE)`. Startup cleanup,
+  failed bundle creation cleanup, stale work-directory replacement and
+  dead-shim recovery use the same confined remover. Failed work cleanup leaves
+  the bundle available for a retry, and an absent bundle can still clean its
+  expected orphan work directory.
+  Targeted Ubuntu 24.04 ARM64 VM controls pass for bundle-wide and orphan
+  work-tree mount preservation, file bind-mount preflight, stale work-path
+  reuse refusal, same-UID post-rename mount races, work-link substitution,
+  retry after failed work cleanup, orphan-work recovery with a missing bundle
+  and normal cleanup.
+  Startup recovers a hidden bundle tombstone only when container, sandbox and
+  shim stores all prove the ID absent; ambiguous bundle or work tombstones
+  preserve both visible and hidden work paths for active IDs. Linux path walks
+  reject symlink ancestors, mounts over the final namespace parent and
+  deterministic directory swaps between stat/open, rename/remove and recovery
+  checks. Container task deletion now retains its task record when shim cleanup
+  fails, allowing the cached exit result to support a later retry. On
+  non-Linux hosts bundle/work deletion fails closed without unmounting or
+  recursively deleting data; cleanup is not supported there. Same-UID mutation
+  of trusted root directories and the final name-to-unlink interval remain
+  outside the proven race guarantees.
+  Native Linux/rootless acceptance and managed production artifact selection
+  remain open; the patched daemon is not yet the default installed artifact.
+
 The gvproxy patch is experimental until matching integration and security
 tests are recorded in the plan:
 
@@ -178,7 +208,15 @@ The containerd process must find the patched shim on PATH before the stock
 `containerd-shim-nerdbox-v1`; Rheic does not modify an existing containerd
 installation. `scripts/build-nerdbox-shim.sh` builds and signs it.
 
-Both native build scripts verify the source checkout's exact manifest commit
+Build the pinned patched Linux/ARM64 containerd and `ctr` from a clean
+containerd v2.4.2 checkout with `scripts/build-containerd-linux-arm64.sh`.
+Set `CONTAINERD_SRC` to the checkout and `OUT_DIR` to a new output directory.
+The script checks the exact manifest commit twice, applies the manifest-hashed
+patch and prints artifact SHA-256 values. Treat these as unsigned engineering
+artifacts until release signing, independent review, and managed-daemon
+consumption of the exact digests are implemented.
+
+The native build scripts verify the source checkout's exact manifest commit
 and reject tracked changes, untracked files, and ignored files before applying
 patches. Go builds use `-trimpath`, disable VCS stamping, and clear the Go
 build ID so independent build directories do not affect the unsigned payload
