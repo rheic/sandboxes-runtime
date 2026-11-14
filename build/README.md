@@ -28,13 +28,16 @@ adapter. The manifest is authoritative; the patches are checked by the
 ## Patches
 
 - `patches/containerd-bundle-remove-no-xdev.patch` — Linux bundle deletion
-  uses descriptor-relative `openat2(RESOLVE_NO_XDEV)` traversal and refuses
-  to remove a tree containing a mounted descendant. Atomic rename and rollback
-  are descriptor-anchored with `renameat2(RENAME_NOREPLACE)` so failed cleanup
-  can be retried without overwriting a collision. This is experimental: it has
-  targeted Ubuntu 24.04 ARM64 VM evidence, but no native Linux/rootless or
-  concurrent same-UID mount-race acceptance. The patched daemon is not yet the
-  default installed artifact.
+  verifies that neither the host-side `rootfs` nor the expected work tree
+  contains mounts before mutating the bundle; unknown mounts are never
+  recursively unmounted. The work symlink must match the path derived from
+  trusted containerd roots. Recursive removal uses descriptor-relative
+  `openat2(RESOLVE_NO_XDEV)` and atomic rename/rollback uses
+  `renameat2(RENAME_NOREPLACE)`. Targeted Ubuntu 24.04 ARM64 VM controls pass
+  for rootfs mount preservation, same-UID post-rename mount races, work-link
+  substitution and normal cleanup. Native Linux/rootless acceptance and
+  managed production artifact selection remain open; the patched daemon is
+  not yet the default installed artifact.
 
 The gvproxy patch is experimental until matching integration and security
 tests are recorded in the plan:

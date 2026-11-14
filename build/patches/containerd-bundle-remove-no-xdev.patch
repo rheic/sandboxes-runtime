@@ -1,8 +1,88 @@
 diff --git a/core/runtime/v2/bundle.go b/core/runtime/v2/bundle.go
-index 0987df6..abdeb49 100644
+index 0987df61e88e32d97c1edcd691f88ed5405759b2..e13b30e802abfb805e27e5049fa272827cafde9e 100644
 --- a/core/runtime/v2/bundle.go
 +++ b/core/runtime/v2/bundle.go
-@@ -172,13 +172,5 @@ func (b *Bundle) Delete() error {
+@@ -27,21 +27,21 @@ import (
+ 	"github.com/containerd/typeurl/v2"
+ 	"github.com/opencontainers/runtime-spec/specs-go"
+ 
+-	"github.com/containerd/containerd/v2/core/mount"
+ 	"github.com/containerd/containerd/v2/pkg/identifiers"
+ 	"github.com/containerd/containerd/v2/pkg/namespaces"
+ 	"github.com/containerd/containerd/v2/pkg/oci"
+ )
+ 
+ // LoadBundle loads an existing bundle from disk
+-func LoadBundle(ctx context.Context, root, id string) (*Bundle, error) {
++func LoadBundle(ctx context.Context, stateRoot, workRoot, id string) (*Bundle, error) {
+ 	ns, err := namespaces.NamespaceRequired(ctx)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 	return &Bundle{
+ 		ID:        id,
+-		Path:      filepath.Join(root, ns, id),
++		Path:      filepath.Join(stateRoot, ns, id),
++		workPath:  filepath.Join(workRoot, ns, id),
+ 		Namespace: ns,
+ 	}, nil
+ }
+@@ -61,6 +61,7 @@ func NewBundle(ctx context.Context, root, state, id string, spec typeurl.Any) (b
+ 		ID:        id,
+ 		Path:      filepath.Join(state, ns, id),
+ 		Namespace: ns,
++		workPath:  work,
+ 	}
+ 	var paths []string
+ 	defer func() {
+@@ -140,45 +141,35 @@ type Bundle struct {
+ 	Path string
+ 	// Namespace of the bundle
+ 	Namespace string
++	workPath  string
+ }
+ 
+ // Delete a bundle atomically
+ func (b *Bundle) Delete() error {
+ 	work, werr := os.Readlink(filepath.Join(b.Path, "work"))
+-	rootfs := filepath.Join(b.Path, "rootfs")
+-	if err := mount.UnmountRecursive(rootfs, 0); err != nil {
+-		return fmt.Errorf("unmount rootfs %s: %w", rootfs, err)
++	if werr == nil && (b.workPath == "" || filepath.Clean(work) != filepath.Clean(b.workPath)) {
++		return fmt.Errorf("refusing to delete bundle with unexpected work directory target %q", work)
+ 	}
+-	if err := os.Remove(rootfs); err != nil && !os.IsNotExist(err) {
+-		return fmt.Errorf("failed to remove bundle rootfs: %w", err)
++	if werr == nil {
++		if err := verifyBundleWorkDir(b.workPath); err != nil {
++			return fmt.Errorf("refusing to delete bundle with mounted work directory %s: %w", b.workPath, err)
++		}
++	}
++	rootfs := filepath.Join(b.Path, "rootfs")
++	if err := verifyBundleRootfs(rootfs); err != nil {
++		return fmt.Errorf("refusing to delete bundle with mounted rootfs %s: %w", rootfs, err)
+ 	}
+ 	err := atomicDelete(b.Path)
+-	if err == nil {
+-		if werr == nil {
+-			return atomicDelete(work)
+-		}
+-		return nil
++	if err != nil {
++		return fmt.Errorf("failed to remove bundle %q: %w", b.Path, err)
+ 	}
+-	// error removing the bundle path; still attempt removing work dir
+-	var err2 error
+ 	if werr == nil {
+-		err2 = atomicDelete(work)
+-		if err2 == nil {
+-			return err
+-		}
++		return atomicDelete(b.workPath)
+ 	}
+-	return fmt.Errorf("failed to remove both bundle and workdir locations: %v: %w", err2, err)
++	return nil
+ }
  
  // atomicDelete renames the path to a hidden file before removal
  func atomicDelete(path string) error {
@@ -19,10 +99,10 @@ index 0987df6..abdeb49 100644
  }
 diff --git a/core/runtime/v2/bundle_remove_default.go b/core/runtime/v2/bundle_remove_default.go
 new file mode 100644
-index 0000000..22690c5
+index 0000000000000000000000000000000000000000..53fbe624b389c601ea05bb4bcbc9874fe464d082
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_default.go
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,63 @@
 +//go:build !linux
 +
 +/*
@@ -47,7 +127,21 @@ index 0000000..22690c5
 +	"fmt"
 +	"os"
 +	"path/filepath"
++
++	"github.com/containerd/containerd/v2/core/mount"
 +)
++
++func verifyBundleRootfs(rootfs string) error {
++	if err := mount.UnmountRecursive(rootfs, 0); err != nil {
++		return fmt.Errorf("unmount rootfs %s: %w", rootfs, err)
++	}
++	if err := os.Remove(rootfs); err != nil && !os.IsNotExist(err) {
++		return fmt.Errorf("failed to remove bundle rootfs: %w", err)
++	}
++	return nil
++}
++
++func verifyBundleWorkDir(string) error { return nil }
 +
 +// removeTree removes the directory tree rooted at path. On non-Linux
 +// platforms the previous os.RemoveAll behavior is kept unchanged.
@@ -74,10 +168,10 @@ index 0000000..22690c5
 +}
 diff --git a/core/runtime/v2/bundle_remove_linux.go b/core/runtime/v2/bundle_remove_linux.go
 new file mode 100644
-index 0000000..f073a09
+index 0000000000000000000000000000000000000000..212891f2cae3e370769db4f5306022553bb07f99
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_linux.go
-@@ -0,0 +1,290 @@
+@@ -0,0 +1,366 @@
 +//go:build linux
 +
 +/*
@@ -133,6 +227,82 @@ index 0000000..f073a09
 +// directory. It is bounded by design; larger directories are read in
 +// multiple batches.
 +const direntBufSize = 8192
++
++// verifyBundleRootfs rejects every mount visible beneath a bundle's host-side
++// rootfs before any bundle entry is removed. Nerdbox mounts task rootfs inside
++// the guest; host-side rootfs mounts are not part of this runtime contract.
++// Do not unmount unknown mounts here: a mount boundary is a hard cleanup error.
++func verifyBundleRootfs(path string) error {
++	return verifyNoMounts(path)
++}
++
++func verifyBundleWorkDir(path string) error {
++	return verifyNoMounts(path)
++}
++
++func verifyNoMounts(path string) error {
++	parentFD, err := openDir(filepath.Dir(path))
++	if err != nil {
++		return err
++	}
++	defer unix.Close(parentFD)
++
++	return verifyNoMountsAt(parentFD, filepath.Base(path), path)
++}
++
++func verifyNoMountsAt(parentFD int, name, display string) error {
++	var st unix.Stat_t
++	if err := retryEINTR(func() error {
++		return unix.Fstatat(parentFD, name, &st, unix.AT_SYMLINK_NOFOLLOW)
++	}); err != nil {
++		if errors.Is(err, unix.ENOENT) {
++			return nil
++		}
++		return fmt.Errorf("failed to stat rootfs path %q: %w", display, err)
++	}
++	if st.Mode&unix.S_IFMT != unix.S_IFDIR {
++		return nil
++	}
++
++	childFD, err := openBeneath(parentFD, name)
++	if err != nil {
++		if errors.Is(err, unix.ENOENT) {
++			return nil
++		}
++		return fmt.Errorf("failed to inspect rootfs directory %q: %w", display, err)
++	}
++	defer unix.Close(childFD)
++	return verifyDirNoMounts(childFD, display)
++}
++
++func verifyDirNoMounts(dirFD int, display string) error {
++	buf := make([]byte, direntBufSize)
++	for {
++		var n int
++		if err := retryEINTR(func() error {
++			var err error
++			n, err = unix.ReadDirent(dirFD, buf)
++			return err
++		}); err != nil {
++			return fmt.Errorf("failed to read rootfs directory %q: %w", display, err)
++		}
++		if n == 0 {
++			return nil
++		}
++		for off := 0; off < n; {
++			consumed, _, names := unix.ParseDirent(buf[off:n], -1, nil)
++			if consumed == 0 {
++				break
++			}
++			off += consumed
++			for _, entry := range names {
++				if err := verifyNoMountsAt(dirFD, string(entry), filepath.Join(display, string(entry))); err != nil {
++					return err
++				}
++			}
++		}
++	}
++}
 +
 +// removeTree removes the directory tree rooted at path.
 +//
@@ -370,10 +540,10 @@ index 0000000..f073a09
 +}
 diff --git a/core/runtime/v2/bundle_remove_linux_test.go b/core/runtime/v2/bundle_remove_linux_test.go
 new file mode 100644
-index 0000000..a557141
+index 0000000000000000000000000000000000000000..ae99266035908ffc93122f37cdc2d13034e34032
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_linux_test.go
-@@ -0,0 +1,174 @@
+@@ -0,0 +1,205 @@
 +//go:build linux
 +
 +/*
@@ -548,12 +718,43 @@ index 0000000..a557141
 +		t.Fatalf("file should be gone, got %v", err)
 +	}
 +}
++
++func TestBundleDeleteRejectsUnexpectedWorkLink(t *testing.T) {
++	dir := t.TempDir()
++	bundle := filepath.Join(dir, "bundle-"+uniqueSuffix(t))
++	foreignWork := filepath.Join(dir, "foreign-work-"+uniqueSuffix(t))
++	expectedWork := filepath.Join(dir, "expected-work-"+uniqueSuffix(t))
++	require.NoError(t, os.MkdirAll(filepath.Join(bundle, "rootfs"), 0o700))
++	require.NoError(t, os.MkdirAll(filepath.Join(foreignWork, "keep"), 0o700))
++	marker := filepath.Join(foreignWork, "keep", "marker")
++	require.NoError(t, os.WriteFile(marker, []byte("PRESERVE"), 0o600))
++	require.NoError(t, os.Symlink(foreignWork, filepath.Join(bundle, "work")))
++
++	err := (&Bundle{Path: bundle, workPath: expectedWork}).Delete()
++	require.ErrorContains(t, err, "unexpected work directory target")
++	require.FileExists(t, marker)
++	require.DirExists(t, bundle)
++}
++
++func TestBundleDeleteRemovesOnlyExpectedWorkLink(t *testing.T) {
++	dir := t.TempDir()
++	bundle := filepath.Join(dir, "bundle-"+uniqueSuffix(t))
++	work := filepath.Join(dir, "work-"+uniqueSuffix(t))
++	require.NoError(t, os.MkdirAll(filepath.Join(bundle, "rootfs"), 0o700))
++	require.NoError(t, os.MkdirAll(filepath.Join(work, "scratch"), 0o700))
++	require.NoError(t, os.Symlink(work, filepath.Join(bundle, "work")))
++
++	err := (&Bundle{Path: bundle, workPath: work}).Delete()
++	require.NoError(t, err)
++	require.NoDirExists(t, bundle)
++	require.NoDirExists(t, work)
++}
 diff --git a/core/runtime/v2/bundle_remove_mount_linux_test.go b/core/runtime/v2/bundle_remove_mount_linux_test.go
 new file mode 100644
-index 0000000..92ed9db
+index 0000000000000000000000000000000000000000..c6809854fd95d21b106765febb28ff4d2ac98ebe
 --- /dev/null
 +++ b/core/runtime/v2/bundle_remove_mount_linux_test.go
-@@ -0,0 +1,463 @@
+@@ -0,0 +1,465 @@
 +//go:build linux
 +
 +/*
@@ -594,11 +795,10 @@ index 0000000..92ed9db
 +const mountTestEnv = "CONTAINERD_TEST_BUNDLE_MOUNT_REMOVAL"
 +
 +// TestRemoveTreeWithMountedDescendant creates a uniquely named tmpfs mount
-+// beneath a uniquely owned bundle directory and proves that cleanup fails
-+// closed: Bundle.Delete returns errCrossMount, and the tmpfs marker data and
-+// the mount itself survive untouched. The test then unmounts exactly the
-+// mount it created (matched by unique source label and parent directory)
-+// and verifies removal succeeds.
++// beneath the bundle's rootfs and proves that cleanup fails closed before
++// mutating the bundle: the tmpfs marker, mount and config file survive. The
++// test then unmounts exactly the mount it created (matched by unique source
++// label and parent directory) and verifies removal succeeds.
 +//
 +// It skips when the environment is not opted in, when mount privileges are
 +// unavailable, or when the kernel lacks the openat2(2) primitive.
@@ -618,9 +818,10 @@ index 0000000..92ed9db
 +	bundleID := "rheic-mount-bundle-" + uniqueSuffix(t)
 +	label := "rheic-tmpfs-" + uniqueSuffix(t)
 +	bundle := filepath.Join(dir, bundleID)
-+	mountAt := filepath.Join(bundle, "mnt")
++	rootfs := filepath.Join(bundle, "rootfs")
++	mountAt := filepath.Join(rootfs, "mnt")
 +
-+	require.NoError(t, os.MkdirAll(filepath.Join(bundle, "rootfs"), 0o700))
++	require.NoError(t, os.MkdirAll(rootfs, 0o700))
 +	require.NoError(t, os.MkdirAll(mountAt, 0o700))
 +	require.NoError(t, os.WriteFile(filepath.Join(bundle, "config.json"), []byte("{}"), 0o600))
 +
@@ -650,21 +851,23 @@ index 0000000..92ed9db
 +	require.NoError(t, unix.Lchown(marker, uid, gid))
 +	require.Contains(t, ownedMounts(t, dir, label), mountAt)
 +
-+	// Exercise the production cleanup path: Bundle.Delete removes rootfs,
-+	// then reaches the sibling mount through atomicDelete.
++	// Exercise Bundle.Delete itself. A rootfs mount must fail before any
++	// bundle entry is removed or any mount is detached.
 +	ownedBundle := &Bundle{Path: bundle}
 +	err = ownedBundle.Delete()
 +	require.Error(t, err)
 +	require.ErrorIs(t, err, errCrossMount)
 +
-+	// The cleanup rollback restores the original bundle name, keeping the
-+	// task bundle available for a retry after the mount is safely unmounted.
++	// The rootfs preflight must leave the original bundle fully available.
 +	atomicPath := filepath.Join(dir, "."+bundleID)
 +	require.DirExists(t, bundle)
 +	if _, err := os.Lstat(atomicPath); !os.IsNotExist(err) {
 +		t.Fatalf("hidden atomic path should have been restored, got %v", err)
 +	}
-+	mountedMarker := filepath.Join(bundle, "mnt", "marker")
++	config, err := os.ReadFile(filepath.Join(bundle, "config.json"))
++	require.NoError(t, err, "bundle metadata must survive failed cleanup")
++	require.Equal(t, "{}", string(config))
++	mountedMarker := filepath.Join(mountAt, "marker")
 +
 +	// Mounted filesystem contents must be intact.
 +	data, err := os.ReadFile(mountedMarker)
@@ -1017,3 +1220,34 @@ index 0000000..92ed9db
 +	}
 +	t.Errorf("failed to unmount test resource %q: %v (detach fallback: %v)", mountpoint, err, derr)
 +}
+diff --git a/core/runtime/v2/shim_load.go b/core/runtime/v2/shim_load.go
+index acc62b718d48dc1414061f188db098144c7585d9..64e1f14c21686fa15074f9c5a191bec9b93cb613 100644
+--- a/core/runtime/v2/shim_load.go
++++ b/core/runtime/v2/shim_load.go
+@@ -51,7 +51,7 @@ func (m *ShimManager) LoadExistingShims(ctx context.Context, stateDir string, ro
+ 			continue
+ 		}
+ 		log.G(ctx).WithField("namespace", ns).Debug("loading tasks in namespace")
+-		if err := m.loadShims(namespaces.WithNamespace(ctx, ns), stateDir); err != nil {
++		if err := m.loadShims(namespaces.WithNamespace(ctx, ns), stateDir, rootDir); err != nil {
+ 			log.G(ctx).WithField("namespace", ns).WithError(err).Error("loading tasks in namespace")
+ 			continue
+ 		}
+@@ -63,7 +63,7 @@ func (m *ShimManager) LoadExistingShims(ctx context.Context, stateDir string, ro
+ 	return nil
+ }
+ 
+-func (m *ShimManager) loadShims(ctx context.Context, stateDir string) error {
++func (m *ShimManager) loadShims(ctx context.Context, stateDir, rootDir string) error {
+ 	ns, err := namespaces.NamespaceRequired(ctx)
+ 	if err != nil {
+ 		return err
+@@ -86,7 +86,7 @@ func (m *ShimManager) loadShims(ctx context.Context, stateDir string) error {
+ 		if len(id) > 0 && id[0] == '.' {
+ 			continue
+ 		}
+-		bundle, err := LoadBundle(ctx, stateDir, id)
++		bundle, err := LoadBundle(ctx, stateDir, rootDir, id)
+ 		if err != nil {
+ 			errLoad = err
+ 			// fine to return error here, it is a programmer error if the context
